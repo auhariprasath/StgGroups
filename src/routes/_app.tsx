@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useDb } from "@/lib/data/store";
 import { BrandLogo } from "@/components/brand-logo";
+import { SaveIndicator } from "@/components/save-indicator";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -156,6 +157,7 @@ function AppLayout() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <SaveIndicator />
             {role === "super_admin" && (
               <Select defaultValue="__all">
                 <SelectTrigger className="hidden h-9 w-[180px] sm:flex" aria-label="Company filter">

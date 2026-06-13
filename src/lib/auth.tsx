@@ -75,7 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
 
         let resolved: User | null = null;
+
         if (profile) {
+          // Happy path: profiles table exists and has an entry for this user.
           const { data: appUser } = await sb
             .from("app_users")
             .select("*")
@@ -101,6 +103,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 companyId: profile.company_id ?? null,
                 title: profile.role === "super_admin" ? "Super Admin" : "Executive",
               };
+        } else {
+          // Fallback: profiles table missing or no row for this user.
+          // Match by email in app_users so the app works even if auth-roles.sql
+          // was not run or provision.mjs was not completed.
+          const { data: appUser } = await sb
+            .from("app_users")
+            .select("*")
+            .eq("email", s.user.email ?? "")
+            .maybeSingle();
+
+          if (appUser) {
+            resolved = {
+              id: appUser.id,
+              name: appUser.name,
+              email: appUser.email,
+              phone: appUser.phone,
+              role: appUser.role,
+              companyId: appUser.company_id ?? null,
+              title: appUser.title,
+            };
+          }
         }
 
         if (cancelled) return;

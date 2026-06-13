@@ -101,17 +101,25 @@ export async function fetchAll(): Promise<Db> {
 
 /**
  * Write the full in-memory model back to Supabase via upserts.
- * The app only ever inserts/updates rows (never row deletes), so a full upsert
- * keeps Postgres in sync without diffing.
+ * Returns an array of error messages — empty means all succeeded.
  */
-export async function upsertAll(db: Db): Promise<void> {
-  if (!supabase) return;
+export async function upsertAll(db: Db): Promise<string[]> {
+  if (!supabase) return [];
   const sb = supabase;
-  const ops: Promise<any>[] = [];
+
+  type UpsertOp = { table: string; promise: Promise<{ error: any }> };
+  const ops: UpsertOp[] = [];
+
   const up = (table: string, rows: any[], onConflict?: string) => {
-    if (rows.length) ops.push(sb.from(table).upsert(rows, onConflict ? { onConflict } : undefined) as unknown as Promise<any>);
+    if (!rows.length) return;
+    const raw = sb.from(table).upsert(rows, onConflict ? { onConflict } : undefined);
+    const promise = Promise.resolve(raw)
+      .then((res: any) => ({ error: res?.error ?? null }))
+      .catch((err: any) => ({ error: err }));
+    ops.push({ table, promise });
   };
-  // Parent tables first (FK order), though upsert tolerates existing rows.
+
+  // Parent tables first (FK order).
   up("companies", db.companies.map(toCompany));
   up("product_categories", db.categories.map(toCategory));
   up("app_users", db.users.map(toUser));
@@ -129,10 +137,17 @@ export async function upsertAll(db: Db): Promise<void> {
   up("targets", db.targets.map(toTarget), "user_id,period");
   up("unserved_requests", db.unserved.map(toUnserved));
   up("lead_status_history", (db.statusHistory ?? []).map(toStatusHistory));
-  const settled = await Promise.allSettled(ops);
-  for (const r of settled) {
-    if (r.status === "rejected") console.error("[supabase] upsert failed:", r.reason);
-  }
+
+  const results = await Promise.all(ops.map((o) => o.promise));
+  const errors: string[] = [];
+  results.forEach((res, i) => {
+    if (res.error) {
+      const msg = `[supabase] ${ops[i].table}: ${res.error?.message ?? res.error}`;
+      console.error(msg);
+      errors.push(msg);
+    }
+  });
+  return errors;
 }
 
 /** True if the backend has no companies yet (needs first-time seeding). */

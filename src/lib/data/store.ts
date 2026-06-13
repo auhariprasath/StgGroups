@@ -57,12 +57,43 @@ export function clearStore(): void {
   setDb(emptyDb());
 }
 
+// ── Save-status listeners (used by SaveIndicator component) ─────────────────
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+let saveStatus: SaveStatus = "idle";
+const saveListeners = new Set<() => void>();
+function setSaveStatus(s: SaveStatus) {
+  saveStatus = s;
+  saveListeners.forEach((l) => l());
+}
+export function getSaveStatus(): SaveStatus { return saveStatus; }
+export function subscribeSaveStatus(cb: () => void) {
+  saveListeners.add(cb);
+  return () => saveListeners.delete(cb);
+}
+
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
 function persist() {
   if (!supabase) return;
   clearTimeout(pushTimer);
   const snapshot = db;
-  pushTimer = setTimeout(() => void upsertAll(snapshot), 400);
+  setSaveStatus("saving");
+  pushTimer = setTimeout(async () => {
+    const errors = await upsertAll(snapshot);
+    if (errors.length === 0) {
+      setSaveStatus("saved");
+      // Reset back to idle after 3 s
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } else {
+      setSaveStatus("error");
+      // Dynamic import avoids a circular dep on sonner at module load time
+      import("sonner").then(({ toast }) => {
+        toast.error("Save failed — data may not persist. Check Supabase connection.", {
+          description: errors[0],
+          duration: 8000,
+        });
+      });
+    }
+  }, 400);
 }
 
 export function mutate(updater: (draft: Db) => Db | void): void {

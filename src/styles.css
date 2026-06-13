@@ -1,0 +1,249 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  STG Groups CRM — design tokens.
+  Brand: heavy-equipment "hi-vis" identity — construction RED primary,
+  safety YELLOW accent, warm CHARCOAL sidebar. Tuned for premium, not garish.
+  Token architecture follows a single source of truth so every surface,
+  badge and status pill stays consistent across light/dark.
+*/
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Brand accents — the yellow + red identity */
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-yellow-foreground: var(--brand-yellow-foreground);
+  --color-brand-red: var(--brand-red);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Lead-lifecycle / status tokens — used everywhere consistently */
+  --color-status-new: var(--status-new);
+  --color-status-followup: var(--status-followup);
+  --color-status-interested: var(--status-interested);
+  --color-status-negotiation: var(--status-negotiation);
+  --color-status-quote-sent: var(--status-quote-sent);
+  --color-status-confirmed: var(--status-confirmed);
+  --color-status-completed: var(--status-completed);
+  --color-status-not-interested: var(--status-not-interested);
+  --color-status-overdue: var(--status-overdue);
+  --color-status-hot: var(--status-hot);
+  --color-status-warm: var(--status-warm);
+  --color-status-cold: var(--status-cold);
+}
+
+:root {
+  --radius: 0.625rem; /* 10px controls; cards use rounded-xl/2xl */
+
+  /* Surfaces — warm neutral so the yellow/red reads as premium, not cheap */
+  --background: #FAF9F6;
+  --foreground: #1B1A17;
+  --card: #FFFFFF;
+  --card-foreground: #1B1A17;
+  --popover: #FFFFFF;
+  --popover-foreground: #1B1A17;
+
+  /* Primary — STG construction red */
+  --primary: #D81E27;
+  --primary-foreground: #FFFFFF;
+  --primary-dark: #A6131B;
+  --primary-light: #FCE8E9;
+
+  /* Secondary = soft amber pill */
+  --secondary: #FDEFC7;
+  --secondary-foreground: #7A4E00;
+
+  /* Muted backgrounds and labels */
+  --muted: #F2F0EA;
+  --muted-foreground: #6E6A60;
+
+  /* Accent (hover/highlight backgrounds) — amber tint */
+  --accent: #FCF3D6;
+  --accent-foreground: #7A4E00;
+
+  /* Semantic */
+  --destructive: #C2161C;
+  --destructive-foreground: #FFFFFF;
+  --success: #1A8F5C;
+  --success-foreground: #FFFFFF;
+  --warning: #C77900;
+  --warning-foreground: #FFFFFF;
+  --info: #1769C0;
+  --info-foreground: #FFFFFF;
+
+  /* Form / borders */
+  --border: #E7E3DA;
+  --input: #E7E3DA;
+  --ring: #D81E27;
+
+  /* Brand accents */
+  --brand-yellow: #F7B500;
+  --brand-yellow-foreground: #1B1A17;
+  --brand-red: #D81E27;
+
+  /* Sidebar — warm charcoal with yellow active accent */
+  --sidebar: #1C1B18;
+  --sidebar-foreground: #F4F2ED;
+  --sidebar-primary: #F7B500;
+  --sidebar-primary-foreground: #1B1A17;
+  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #F7B500;
+
+  /* Status / lifecycle badges */
+  --status-new: #1769C0;
+  --status-followup: #C77900;
+  --status-interested: #0E8C7A;
+  --status-negotiation: #7A40D6;
+  --status-quote-sent: #4A45C9;
+  --status-confirmed: #1A8F5C;
+  --status-completed: #15722C;
+  --status-not-interested: #C2161C;
+  --status-overdue: #D81E27;
+  --status-hot: #D81E27;
+  --status-warm: #C77900;
+  --status-cold: #1769C0;
+
+  /* Misc tokens */
+  --muted-strong: #9A958A; /* placeholder text */
+  --shadow-card: 0 2px 8px rgba(27, 26, 23, 0.06);
+}
+
+.dark {
+  /* Surfaces — 3-step depth: sidebar < background < card < popover */
+  --background: #14130F;
+  --foreground: #F1EFE8;
+  --card: #1F1D18;
+  --card-foreground: #F1EFE8;
+  --popover: #29261F;
+  --popover-foreground: #F1EFE8;
+
+  /* Primary — brighter red so it reads on dark surfaces */
+  --primary: #F2545B;
+  --primary-foreground: #1B0709;
+  --primary-dark: #C7363D;
+  --primary-light: #38201F;
+
+  /* Secondary / muted */
+  --secondary: #322B1A;
+  --secondary-foreground: #FBE2A2;
+  --muted: #211F18;
+  --muted-foreground: #B3AE9E;
+  --accent: #2C2718;
+  --accent-foreground: #FBE2A2;
+
+  /* Semantic — boosted brightness for dark legibility */
+  --destructive: #F2545B;
+  --destructive-foreground: #1B0709;
+  --success: #2DD08A;
+  --success-foreground: #04200F;
+  --warning: #F7B731;
+  --warning-foreground: #1A0E00;
+  --info: #5BB5FF;
+  --info-foreground: #001B33;
+
+  /* Borders / inputs */
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.10);
+  --ring: #F7B500;
+
+  /* Brand accents */
+  --brand-yellow: #FBC52D;
+  --brand-yellow-foreground: #1B1A17;
+  --brand-red: #F2545B;
+
+  /* Sidebar — darker than background for contrast */
+  --sidebar: #0F0E0B;
+  --sidebar-foreground: #F4F2ED;
+  --sidebar-primary: #FBC52D;
+  --sidebar-primary-foreground: #1B1A17;
+  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent-foreground: #F4F2ED;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #FBC52D;
+
+  /* Status badges — readable on dark cards */
+  --status-new: #5BB5FF;
+  --status-followup: #F7B731;
+  --status-interested: #2BC0AC;
+  --status-negotiation: #B68CFF;
+  --status-quote-sent: #8E8AFF;
+  --status-confirmed: #2DD08A;
+  --status-completed: #2DD08A;
+  --status-not-interested: #F2545B;
+  --status-overdue: #F2545B;
+  --status-hot: #F2545B;
+  --status-warm: #F7B731;
+  --status-cold: #5BB5FF;
+
+  --muted-strong: #B3AE9E;
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.55);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  html { -webkit-tap-highlight-color: transparent; }
+
+  ::placeholder { color: var(--muted-strong); opacity: 1; }
+
+  :root { accent-color: var(--primary); }
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}

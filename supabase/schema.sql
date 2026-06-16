@@ -9,24 +9,38 @@
 -- ============================================================================
 
 -- ---------- 0. Clean slate (drop in reverse FK order) ----------------------
-drop table if exists public.tax_invoices        cascade;
-drop table if exists public.proforma_invoices   cascade;
-drop table if exists public.lead_status_history cascade;
-drop table if exists public.site_visits         cascade;
-drop table if exists public.unserved_requests   cascade;
-drop table if exists public.targets             cascade;
-drop table if exists public.not_interested      cascade;
-drop table if exists public.negotiations        cascade;
-drop table if exists public.follow_ups          cascade;
-drop table if exists public.payments            cascade;
-drop table if exists public.quotations          cascade;
-drop table if exists public.requirements        cascade;
-drop table if exists public.activities          cascade;
-drop table if exists public.leads               cascade;
-drop table if exists public.app_users           cascade;
-drop table if exists public.product_categories  cascade;
-drop table if exists public.companies           cascade;
-drop table if exists public.profiles            cascade;
+drop table if exists public.requirement_audit_logs     cascade;
+drop table if exists public.invoice_status_history     cascade;
+drop table if exists public.payment_records            cascade;
+drop table if exists public.work_orders                cascade;
+drop table if exists public.tax_invoices               cascade;
+drop table if exists public.proforma_invoices          cascade;
+drop table if exists public.lead_status_history        cascade;
+drop table if exists public.lead_transfer_logs         cascade;
+drop table if exists public.lead_assignment_history    cascade;
+drop table if exists public.site_visits                cascade;
+drop table if exists public.unserved_requests          cascade;
+drop table if exists public.targets                    cascade;
+drop table if exists public.not_interested             cascade;
+drop table if exists public.negotiations               cascade;
+drop table if exists public.follow_ups                 cascade;
+drop table if exists public.payments                   cascade;
+drop table if exists public.quotations                 cascade;
+drop table if exists public.requirements               cascade;
+drop table if exists public.activities                 cascade;
+drop table if exists public.leads                      cascade;
+drop table if exists public.app_users                  cascade;
+drop table if exists public.product_categories         cascade;
+drop table if exists public.product_alias_mapping      cascade;
+drop table if exists public.lead_sources               cascade;
+drop table if exists public.existing_customer_history  cascade;
+drop table if exists public.duplicate_detection_logs   cascade;
+drop table if exists public.followup_timeline          cascade;
+drop table if exists public.followup_reminders         cascade;
+drop table if exists public.negative_reason_analytics  cascade;
+drop table if exists public.notifications              cascade;
+drop table if exists public.companies                  cascade;
+drop table if exists public.profiles                   cascade;
 
 -- ---------- 1. Core lookup tables -------------------------------------------
 
@@ -78,7 +92,10 @@ create table public.leads (
   location             text,
   gst_number           text,
   source               text not null check (source in ('justdial','indiamart','phone','whatsapp','walkin','reference','existing_customer','manual')),
-  status               text not null check (status in ('new','followup','interested','negotiation','quote_sent','confirmed','completed','not_interested','dormant')),
+  status               text not null check (status in ('new','first_contact','followup','requirements','quote_sent','negotiation','work_order','active_project','completed','not_interested','dormant')),
+  previous_status      text,
+  status_changed_at    timestamptz,
+  status_changed_by    text,
   priority             text not null check (priority in ('hot','warm','cold')),
   company_id           text not null references public.companies(id),
   category_id          text references public.product_categories(id) on delete set null,
@@ -115,6 +132,42 @@ create table public.requirements (
 );
 create index requirements_lead_idx on public.requirements(lead_id);
 
+-- Phase 5: Requirement Audit Logs — tracks each change to requirement fields
+create table public.requirement_audit_logs (
+  id              text primary key,
+  requirement_id  text not null references public.requirements(id) on delete cascade,
+  action_type     text not null,
+  field_key       text,
+  old_value       text,
+  new_value       text,
+  changed_by      text not null,
+  changed_at      timestamptz not null default now()
+);
+create index requirement_audit_logs_req_idx on public.requirement_audit_logs(requirement_id);
+
+create table public.machines (
+  id                text primary key,
+  category_id       text not null references public.product_categories(id),
+  company_id        text not null references public.companies(id),
+  name              text not null,
+  make              text not null,
+  model             text not null,
+  platform_height   text,
+  working_height    text,
+  capacity          text,
+  machine_weight    text,
+  engine            text,
+  drive_speed       text,
+  fuel_type         text,
+  specifications    text,
+  rental_category   text,
+  safety_notes      text,
+  image_url         text,
+  daily_rate        integer
+);
+create index machines_category_idx on public.machines(category_id);
+create index machines_company_idx on public.machines(company_id);
+
 create table public.quotations (
   id                text primary key,
   requirement_id    text references public.requirements(id) on delete set null,
@@ -131,10 +184,18 @@ create table public.quotations (
   rate_per_day_note text,
   work_order_ref    text,
   approved_by       text,
-  status            text not null check (status in ('draft','sent','accepted','expired')),
+  status            text not null check (status in ('draft','pending_approval','sent','accepted','expired')),
   delivery_address  text not null default '',
   delivery_gstin    text not null default '',
-  gst_percent       integer not null default 18
+  gst_percent       integer not null default 18,
+  mobilization_charge     numeric,
+  demobilization_charge   numeric,
+  viewed_at               text,
+  view_count              integer,
+  customer_response       text,
+  customer_response_note  text,
+  customer_response_at    text,
+  locked_at               text
 );
 create index quotations_lead_idx on public.quotations(lead_id);
 create index quotations_no_idx   on public.quotations(quotation_no);
@@ -143,10 +204,12 @@ create table public.payments (
   id             text primary key,
   quotation_id   text references public.quotations(id) on delete set null,
   lead_id        text not null references public.leads(id) on delete cascade,
-  stage          text not null check (stage in ('none','proforma_sent','advance_paid','fully_paid')),
+  stage          text not null check (stage in ('none','proforma_sent','advance_paid','partially_paid','fully_paid')),
   total          numeric not null default 0,
   advance_amount numeric not null default 0,
   balance_amount numeric not null default 0,
+  tds_percent    numeric not null default 0,
+  tds_amount     numeric not null default 0,
   copy_to_admin  boolean not null default true,
   updated_at     timestamptz not null default now()
 );
@@ -174,7 +237,8 @@ create table public.negotiations (
   expected_amount   numeric not null,
   competitor_name   text,
   competitor_amount numeric,
-  note              text
+  note              text,
+  rounds            integer not null default 1
 );
 
 create table public.not_interested (
@@ -284,7 +348,221 @@ create table public.tax_invoices (
 );
 create index tax_invoices_lead_idx on public.tax_invoices(lead_id);
 
--- ---------- 4. Row-Level Security (Stage 1: open anon + authenticated) ------
+-- Phase 7: Work Order table (between quotation acceptance and proforma)
+create table public.work_orders (
+  id                    text primary key,
+  work_order_no         text not null,
+  lead_id               text not null references public.leads(id) on delete cascade,
+  quotation_id          text references public.quotations(id) on delete set null,
+  quotation_no          text not null default '',
+  company_id            text not null references public.companies(id),
+  date                  text not null,
+  valid_until           text not null,
+  subtotal              numeric not null default 0,
+  gst_percent           integer not null default 0,
+  gst_amount            numeric not null default 0,
+  total                 numeric not null default 0,
+  advance_percent       integer not null default 50,
+  advance_amount        numeric not null default 0,
+  balance_amount        numeric not null default 0,
+  client_name           text not null,
+  client_company        text,
+  client_address        text,
+  client_gstin          text,
+  client_contact_person text,
+  delivery_address      text,
+  delivery_gstin        text,
+  po_reference          text,
+  acceptance_remark     text,
+  note                  text,
+  status                text not null check (status in ('draft','sent','accepted')) default 'draft'
+);
+create index work_orders_lead_idx on public.work_orders(lead_id);
+
+-- Phase 7: Payment Records (individual payment receipts)
+create table public.payment_records (
+  id            text primary key,
+  lead_id       text not null references public.leads(id) on delete cascade,
+  invoice_id    text not null,
+  invoice_type  text not null check (invoice_type in ('proforma','tax')),
+  amount        numeric not null,
+  date          text not null,
+  mode          text not null check (mode in ('NEFT','RTGS','UPI','Cheque','Cash','Card','Other')),
+  reference     text not null,
+  remarks       text,
+  tds_deducted  numeric not null default 0,
+  net_amount    numeric not null,
+  utr_proof     text,
+  verified_by   text,
+  verified_at   timestamptz,
+  status        text not null check (status in ('pending','verified','approved','rejected')) default 'pending',
+  created_by    text not null,
+  created_at    timestamptz not null default now()
+);
+create index payment_records_lead_idx on public.payment_records(lead_id);
+create index payment_records_invoice_idx on public.payment_records(invoice_id);
+
+-- Phase 7: Payment Instalments
+create table public.payment_instalments (
+  id            text primary key,
+  lead_id       text not null references public.leads(id) on delete cascade,
+  invoice_id    text not null,
+  invoice_type  text not null check (invoice_type in ('proforma','tax')),
+  due_date      text not null,
+  due_amount    numeric not null,
+  paid_status   text not null check (paid_status in ('pending','paid','overdue')) default 'pending',
+  paid_date     text,
+  late_days     integer not null default 0,
+  created_at    timestamptz not null default now()
+);
+create index payment_instalments_lead_idx on public.payment_instalments(lead_id);
+
+-- Phase 7/8: Communication Logs (WhatsApp/Email send tracking)
+create table public.communication_logs (
+  id              text primary key,
+  lead_id         text not null references public.leads(id) on delete cascade,
+  invoice_id      text not null,
+  invoice_type    text not null check (invoice_type in ('proforma','tax')),
+  method          text not null check (method in ('whatsapp','email')),
+  recipient       text not null,
+  subject         text not null default '',
+  body            text not null default '',
+  delivery_status text not null check (delivery_status in ('sent','delivered','read','failed')) default 'sent',
+  sent_at         timestamptz not null default now(),
+  sent_by         text not null
+);
+create index communication_logs_lead_idx on public.communication_logs(lead_id);
+
+-- Phase 7/8: Invoice Status History
+create table public.invoice_status_history (
+  id            text primary key,
+  invoice_id    text not null,
+  invoice_type  text not null check (invoice_type in ('proforma','tax')),
+  old_status    text not null,
+  new_status    text not null,
+  changed_by    text not null,
+  changed_at    timestamptz not null default now(),
+  remarks       text
+);
+create index invoice_status_history_invoice_idx on public.invoice_status_history(invoice_id);
+
+-- ---------- 4. Auxiliary & support tables (must come after leads) -----------
+
+create table public.lead_sources (
+  source_name     text primary key,
+  source_type     text not null default 'manual',
+  webhook_enabled boolean not null default false,
+  status          text not null default 'active' check (status in ('active','inactive'))
+);
+
+create table public.product_alias_mapping (
+  id               text primary key,
+  keyword          text not null,
+  actual_product   text not null,
+  company          text not null references public.companies(id),
+  confidence_score integer not null default 85 check (confidence_score between 0 and 100),
+  created_at       timestamptz not null default now()
+);
+create index product_alias_keyword_idx on public.product_alias_mapping(keyword);
+
+create table public.lead_assignment_history (
+  id          text primary key,
+  lead_id     text not null references public.leads(id) on delete cascade,
+  old_owner   text references public.app_users(id) on delete set null,
+  new_owner   text not null references public.app_users(id) on delete cascade,
+  reason      text not null default '',
+  assigned_by text not null references public.app_users(id),
+  created_at  timestamptz not null default now()
+);
+create index lead_assignment_lead_idx on public.lead_assignment_history(lead_id);
+
+create table public.existing_customer_history (
+  id                  text primary key,
+  customer_mobile     text not null,
+  previous_quotations  jsonb not null default '[]'::jsonb,
+  previous_invoices    jsonb not null default '[]'::jsonb,
+  previous_payments    jsonb not null default '[]'::jsonb,
+  previous_followups   jsonb not null default '[]'::jsonb,
+  created_at          timestamptz not null default now()
+);
+create index existing_customer_mobile_idx on public.existing_customer_history(customer_mobile);
+
+create table public.duplicate_detection_logs (
+  id               text primary key,
+  lead_id          text not null references public.leads(id) on delete cascade,
+  matched_lead_id  text references public.leads(id) on delete set null,
+  match_type       text not null check (match_type in ('mobile','gst','company','fuzzy','email')),
+  confidence_score integer not null default 0,
+  action_taken     text not null check (action_taken in ('merged','ignored','linked')),
+  actioned_by      text not null,
+  created_at       timestamptz not null default now()
+);
+create index dup_detection_lead_idx on public.duplicate_detection_logs(lead_id);
+
+create table public.lead_transfer_logs (
+  id                  text primary key,
+  lead_id             text not null references public.leads(id) on delete cascade,
+  from_company_id     text not null references public.companies(id),
+  to_company_id       text not null references public.companies(id),
+  from_user_id        text not null references public.app_users(id),
+  to_user_id          text not null references public.app_users(id),
+  reason_type         text not null check (reason_type in ('wrong_product','wrong_company','customer_changed','business_decision')),
+  note                text not null default '',
+  transferred_by      text not null,
+  created_at          timestamptz not null default now()
+);
+create index lead_transfer_lead_idx on public.lead_transfer_logs(lead_id);
+
+create table public.notifications (
+  id              text primary key,
+  user_id         text not null,
+  type            text not null default 'info',
+  title           text not null,
+  message         text not null default '',
+  priority        text not null default 'normal' check (priority in ('low','normal','high','urgent')),
+  read            boolean not null default false,
+  link_to         text,
+  created_at      timestamptz not null default now()
+);
+create index notifications_user_idx on public.notifications(user_id);
+create index notifications_read_idx on public.notifications(read);
+
+-- ---------- 5. Phase 3 — Follow-up Management tables ------------------------
+
+create table public.followup_timeline (
+  id          text primary key,
+  lead_id     text not null references public.leads(id) on delete cascade,
+  action_type text not null,
+  description text not null default '',
+  created_by  text not null,
+  timestamp   timestamptz not null default now()
+);
+create index followup_timeline_lead_idx on public.followup_timeline(lead_id);
+
+create table public.followup_reminders (
+  id                text primary key,
+  lead_id           text not null references public.leads(id) on delete cascade,
+  handler_name      text not null,
+  reminder_date     date not null,
+  reminder_time     time not null,
+  status            text not null default 'pending' check (status in ('pending','sent','cancelled')),
+  notification_sent boolean not null default false,
+  created_at        timestamptz not null default now()
+);
+create index followup_reminders_lead_idx on public.followup_reminders(lead_id);
+
+create table public.negative_reason_analytics (
+  id              text primary key,
+  lead_id         text not null references public.leads(id) on delete cascade,
+  company_name    text not null,
+  reason_type     text not null,
+  competitor_name text,
+  notes           text,
+  created_at      timestamptz not null default now()
+);
+create index negative_reason_lead_idx on public.negative_reason_analytics(lead_id);
+
+-- ---------- 6. Row-Level Security (Stage 1: open anon + authenticated) ------
 --  Every table gets RLS enabled + one permissive "allow all" policy.
 --  Replace with company-scoped policies before go-live.
 
@@ -295,7 +573,13 @@ begin
     'companies','product_categories','app_users','profiles','leads','activities',
     'requirements','quotations','payments','follow_ups','site_visits','negotiations',
     'not_interested','targets','unserved_requests','lead_status_history',
-    'proforma_invoices','tax_invoices'
+    'proforma_invoices','tax_invoices','work_orders','payment_records','invoice_status_history',
+    'payment_instalments','communication_logs',
+    'lead_transfer_logs','lead_sources',
+    'product_alias_mapping','lead_assignment_history','existing_customer_history',
+    'duplicate_detection_logs','notifications',
+    'followup_timeline','followup_reminders','negative_reason_analytics',
+    'requirement_audit_logs'
   ]
   loop
     execute format('alter table public.%I enable row level security;', t);

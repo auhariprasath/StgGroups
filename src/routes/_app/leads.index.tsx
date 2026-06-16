@@ -4,40 +4,64 @@ import { useAuth } from "@/lib/auth";
 import { useDb } from "@/lib/data/store";
 import { visibleLeads, userName, companyName } from "@/lib/data/selectors";
 import { LEAD_STATUS, SOURCE_LABEL } from "@/lib/status";
-import { StatusBadge, PriorityBadge } from "@/components/status-badge";
+import { StatusBadge, PriorityBadge, LeadTypeBadge } from "@/components/status-badge";
 import { NewLeadDialog } from "@/components/leads/new-lead-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 import { buildWaMeLink, openWaMeLink } from "@/lib/utils";
-import { initialsOf, relativeTime } from "@/lib/format";
-import { Plus, Search, Phone, MessageSquare, AlertCircle } from "lucide-react";
+import { initialsOf, relativeTime, formatDateTimeIN } from "@/lib/format";
+import {
+  Plus,
+  Search,
+  Phone,
+  MessageSquare,
+  AlertCircle,
+  ArrowRightLeft,
+  Building2,
+  Clock,
+  MapPin,
+  User,
+} from "lucide-react";
 import type { Lead, LeadStatus } from "@/lib/data/types";
 
 export const Route = createFileRoute("/_app/leads/")({ component: LeadsPage });
 
-const FILTERS: { value: LeadStatus | "all"; label: string }[] = [
+type FilterValue = LeadStatus | "all" | "transferred";
+
+const FILTERS: { value: FilterValue; label: string }[] = [
   { value: "all", label: "All" },
   { value: "new", label: "New" },
+  { value: "first_contact", label: "First contact" },
   { value: "followup", label: "Follow-up" },
-  { value: "interested", label: "Interested" },
+  { value: "requirements", label: "Requirements" },
   { value: "negotiation", label: "Negotiation" },
   { value: "quote_sent", label: "Quoted" },
-  { value: "confirmed", label: "Confirmed" },
+  { value: "work_order", label: "Work order" },
+  { value: "active_project", label: "Active project" },
   { value: "completed", label: "Completed" },
   { value: "not_interested", label: "Not interested" },
+  { value: "transferred", label: "Transferred" },
 ];
 
 function LeadsPage() {
   const db = useDb();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [dialog, setDialog] = useState(false);
-  const [filter, setFilter] = useState<LeadStatus | "all">("all");
+  const [filter, setFilter] = useState<FilterValue>("all");
   const [q, setQ] = useState("");
 
   const leads = useMemo(() => {
-    let list = visibleLeads(db, user);
+    let list = visibleLeads(db, user, filter === "not_interested" || filter === "transferred");
+    if (filter === "transferred") {
+      const transferredIds = new Set((db.transferLogs ?? []).map((t) => t.leadId));
+      return [...list.filter((l) => transferredIds.has(l.id))].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+    }
     if (filter !== "all") list = list.filter((l) => l.status === filter);
     const term = q.trim().toLowerCase();
     if (term)
@@ -50,12 +74,18 @@ function LeadsPage() {
           (l.location?.toLowerCase().includes(term) ?? false) ||
           (l.email?.toLowerCase().includes(term) ?? false),
       );
-    return [...list].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return [...list].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
   }, [db, user, filter, q]);
 
   const counts = useMemo(() => {
     const all = visibleLeads(db, user);
-    const map: Record<string, number> = { all: all.length };
+    const transferredIds = new Set((db.transferLogs ?? []).map((t) => t.leadId));
+    const map: Record<string, number> = {
+      all: all.length,
+      transferred: all.filter((l) => transferredIds.has(l.id)).length,
+    };
     for (const s of Object.keys(LEAD_STATUS)) map[s] = all.filter((l) => l.status === s).length;
     return map;
   }, [db, user]);
@@ -113,7 +143,9 @@ function LeadsPage() {
       {/* Table */}
       {leads.length === 0 ? (
         <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">
-          {q || filter !== "all" ? "No leads match your filters." : "No leads yet. Create your first lead to get started."}
+          {q || filter !== "all"
+            ? "No leads match your filters."
+            : "No leads yet. Create your first lead to get started."}
         </div>
       ) : (
         <div className="rounded-lg border bg-card overflow-x-auto shadow-sm">
@@ -125,7 +157,9 @@ function LeadsPage() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Priority</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Source</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Assigned to</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                  Assigned to
+                </th>
                 {user?.role === "super_admin" && (
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Company</th>
                 )}
@@ -147,6 +181,89 @@ function LeadsPage() {
         </div>
       )}
 
+      {filter === "transferred" && leads.length > 0 && (
+        <div className="rounded-lg border bg-card overflow-x-auto shadow-sm mt-4">
+          <div className="px-4 py-3 border-b bg-muted/30 flex items-center gap-2">
+            <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">
+              Transfer history — {leads.length} transferred lead{leads.length > 1 ? "s" : ""}
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Lead</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">From</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">To</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Reason</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                  Transferred by
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l) => {
+                const t = (db.transferLogs ?? [])
+                  .filter((tl) => tl.leadId === l.id)
+                  .sort(
+                    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                  )[0];
+                const reasonLabels: Record<string, string> = {
+                  wrong_product: "Wrong product",
+                  wrong_company: "Wrong company",
+                  customer_changed: "Requirement changed",
+                  business_decision: "Business decision",
+                };
+                return (
+                  <tr
+                    key={l.id}
+                    className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => navigate({ to: "/leads/$leadId", params: { leadId: l.id } })}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar className="h-7 w-7 shrink-0">
+                          <AvatarFallback className="text-[10px]">
+                            {initialsOf(l.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <span className="font-medium truncate max-w-[120px] block">{l.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{l.phone}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {t ? companyName(db, t.fromCompanyId) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {t ? companyName(db, t.toCompanyId) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      <span className="text-muted-foreground">
+                        {t ? (reasonLabels[t.reasonType] ?? t.reasonType) : "—"}
+                      </span>
+                      {t?.note && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[200px]">
+                          {t.note}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      {t?.transferredBy ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {t ? relativeTime(t.createdAt) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <NewLeadDialog open={dialog} onOpenChange={setDialog} />
     </>
   );
@@ -163,27 +280,77 @@ function LeadRow({
 }) {
   const navigate = useNavigate();
   const tel = lead.phone.replace(/\D/g, "").slice(-10);
+  const db = useDb();
+  const category = db.categories.find((c) => c.id === lead.categoryId);
+  const categoryName = category?.name ?? lead.requestText.slice(0, 40);
 
   return (
     <tr
       className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
       onClick={() => navigate({ to: "/leads/$leadId", params: { leadId: lead.id } })}
     >
-      {/* Name + avatar */}
+      {/* Name + avatar with hover card */}
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <Avatar className="h-7 w-7 shrink-0">
-            <AvatarFallback className="text-[10px]">{initialsOf(lead.name)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <span className="font-medium truncate max-w-[140px] block">{lead.name}</span>
-            {lead.needsManualRouting && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-warning">
-                <AlertCircle className="h-3 w-3" /> Needs routing
-              </span>
-            )}
-          </div>
-        </div>
+        <HoverCard openDelay={300} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <div className="flex items-center gap-2.5 cursor-pointer">
+              <Avatar className="h-7 w-7 shrink-0">
+                <AvatarFallback className="text-[10px]">{initialsOf(lead.name)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <span className="font-medium truncate max-w-[140px] block">{lead.name}</span>
+                {lead.needsManualRouting && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-warning">
+                    <AlertCircle className="h-3 w-3" /> Needs routing
+                  </span>
+                )}
+              </div>
+            </div>
+          </HoverCardTrigger>
+          <HoverCardContent className="w-72" side="right" align="start">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs">{initialsOf(lead.name)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{lead.name}</p>
+                  <p className="text-xs text-muted-foreground">{lead.phone}</p>
+                </div>
+                <div className="ml-auto shrink-0">
+                  <PriorityBadge priority={lead.priority} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <StatusBadge status={lead.status} />
+                <LeadTypeBadge leadType={lead.leadType} />
+              </div>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="h-3 w-3 shrink-0" />
+                  <span>{companyName(db, lead.companyId)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <User className="h-3 w-3 shrink-0" />
+                  <span>{assignedName}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="h-3 w-3 shrink-0" />
+                  <span>{lead.location || lead.customerCompany || "—"}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  <span>Created {formatDateTimeIN(lead.createdAt)}</span>
+                </div>
+              </div>
+              {categoryName && (
+                <div className="rounded-md bg-muted/50 px-2 py-1 text-xs font-medium">
+                  {categoryName}
+                </div>
+              )}
+            </div>
+          </HoverCardContent>
+        </HoverCard>
       </td>
 
       {/* Phone */}

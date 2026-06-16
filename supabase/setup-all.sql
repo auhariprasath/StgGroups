@@ -159,6 +159,39 @@ create table if not exists public.targets (
   primary key (user_id, period)
 );
 
+create table if not exists public.followup_timeline (
+  id          text primary key,
+  lead_id     text not null references public.leads(id) on delete cascade,
+  action_type text not null,
+  description text not null default '',
+  created_by  text not null,
+  timestamp   timestamptz not null default now()
+);
+create index if not exists followup_timeline_lead_idx on public.followup_timeline(lead_id);
+
+create table if not exists public.followup_reminders (
+  id                text primary key,
+  lead_id           text not null references public.leads(id) on delete cascade,
+  handler_name      text not null,
+  reminder_date     date not null,
+  reminder_time     time not null,
+  status            text not null default 'pending' check (status in ('pending','sent','cancelled')),
+  notification_sent boolean not null default false,
+  created_at        timestamptz not null default now()
+);
+create index if not exists followup_reminders_lead_idx on public.followup_reminders(lead_id);
+
+create table if not exists public.negative_reason_analytics (
+  id              text primary key,
+  lead_id         text not null references public.leads(id) on delete cascade,
+  company_name    text not null,
+  reason_type     text not null,
+  competitor_name text,
+  notes           text,
+  created_at      timestamptz not null default now()
+);
+create index if not exists negative_reason_lead_idx on public.negative_reason_analytics(lead_id);
+
 create table if not exists public.unserved_requests (
   id                text primary key,
   text              text not null,
@@ -168,7 +201,7 @@ create table if not exists public.unserved_requests (
 );
 
 -- ---------- Row-Level Security ---------------------------------------------
---  ⚠️  STAGE 1 (current): the app uses the anon key with a MOCK role switcher
+-- ⚠️  STAGE 1 (current): the app uses the anon key with a MOCK role switcher
 --  and NO Supabase Auth yet, so these policies allow anon read+write to get the
 --  CRM running end-to-end. This is fine for development/demo on a private
 --  project, but is NOT production-safe.
@@ -184,7 +217,8 @@ begin
   foreach t in array array[
     'companies','product_categories','app_users','leads','activities',
     'requirements','quotations','payments','follow_ups','negotiations',
-    'not_interested','targets','unserved_requests'
+    'not_interested','targets','unserved_requests',
+    'followup_timeline','followup_reminders','negative_reason_analytics'
   ]
   loop
     execute format('alter table public.%I enable row level security;', t);
@@ -244,7 +278,8 @@ do $$ declare t text; begin
   foreach t in array array[
     'companies','product_categories','app_users','leads','activities',
     'requirements','quotations','payments','follow_ups','negotiations',
-    'not_interested','targets','unserved_requests'
+    'not_interested','targets','unserved_requests',
+    'followup_timeline','followup_reminders','negative_reason_analytics'
   ]
   loop execute format('drop policy if exists "anon_all_%1$s" on public.%1$I;', t); end loop;
 end $$;
@@ -273,7 +308,7 @@ end $$;
 -- ---------- lead-linked tables (company derived via leads) ------------------
 -- payments has no company_id of its own — scope it through its lead.
 do $$ declare t text; begin
-  foreach t in array array['activities','follow_ups','negotiations','not_interested','payments'] loop
+  foreach t in array array['activities','follow_ups','negotiations','not_interested','payments','followup_timeline','followup_reminders','negative_reason_analytics'] loop
     execute format('drop policy if exists "%1$s_scope" on public.%1$I;', t);
     execute format(
       'create policy "%1$s_scope" on public.%1$I for all to authenticated '

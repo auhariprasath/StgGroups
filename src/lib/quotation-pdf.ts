@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import type { Company, Quotation } from "./data/types";
-import { formatINRPdf } from "./format";
+import { formatINRPdf, numberToWords } from "./format";
 
 const STG_TERMS = [
   "This quotation is valid only for the period stated on Page 1. No commitment is implied beyond the validity date.",
@@ -18,28 +18,45 @@ const STG_TERMS = [
   "GST and other applicable statutory levies are charged at the rates in force on the date of invoice. Rates may be revised in line with government notifications without prior notice to the client.",
 ];
 
+/** Parse a #rrggbb hex string into an [r,g,b] tuple (falls back to STG red). */
+function hexToRgb(hex: string | undefined): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? "");
+  if (!m) return [216, 30, 39];
+  const int = parseInt(m[1], 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+}
+
 export interface QuotationClientInfo {
   name: string;
   companyName?: string;
   address?: string;
   gstin?: string;
   contactPerson?: string;
+  mdName?: string;
+  mdNumber?: string;
+  mdEmail?: string;
 }
 
 /**
- * Generates and downloads a 2-page A4 quotation PDF.
+ * Generates a 2-page A4 quotation PDF and returns the jsPDF document.
  * Page 1: header, addresses, line items, GST breakdown, payment terms.
  * Page 2: Terms & Conditions, bank details, acceptance signature.
  */
-export function downloadQuotationPdf(
+export function generateQuotationPdf(
   q: Quotation,
   company: Company,
   client: QuotationClientInfo,
-) {
+): jsPDF {
   const gstPercent = q.gstPercent ?? 0;
-  const subtotal = q.lines.reduce((s, l) => s + l.qty * l.rate, 0);
+  const lineSubtotal = q.lines.reduce((s, l) => s + l.qty * l.rate, 0);
+  const mobilization = q.mobilizationCharge ?? 0;
+  const demobilization = q.demobilizationCharge ?? 0;
+  const subtotal = lineSubtotal + mobilization + demobilization;
   const gstAmt = Math.round((subtotal * gstPercent) / 100);
   const grandTotal = subtotal + gstAmt;
+
+  // Per-company branding accent (Company Branding Engine).
+  const [br, bg, bb] = hexToRgb(company.accent);
 
   // Determine intra-state vs inter-state from first 2 chars of GSTIN (state code)
   const stgState = company.gstin.slice(0, 2);
@@ -47,16 +64,25 @@ export function downloadQuotationPdf(
   const isInterstate = q.deliveryGstin.length > 0 && clientState !== stgState;
 
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const M = 40;        // left/right margin
-  const PW = 595;      // page width (A4 portrait)
-  const PH = 842;      // page height
+  const M = 40; // left/right margin
+  const PW = 595; // page width (A4 portrait)
+  const PH = 842; // page height
   const W = PW - 2 * M; // usable width = 515
   let y = 48;
 
+  // Revision watermark (V2+)
+  if (q.version > 1) {
+    doc.saveGraphicsState();
+    doc.setFont("helvetica", "bold").setFontSize(72).setTextColor(220, 220, 220);
+    doc.text("REVISED", PW / 2, PH / 2, { align: "center", angle: -35 });
+    doc.restoreGraphicsState();
+  }
+
   // ── PAGE 1 ─────────────────────────────────────────────────────────────────
 
-  // Company name + address
-  doc.setFont("helvetica", "bold").setFontSize(17).setTextColor(216, 30, 39);
+  // Company branding band (accent-coloured) + name
+  doc.setFillColor(br, bg, bb).rect(0, 0, PW, 6, "F");
+  doc.setFont("helvetica", "bold").setFontSize(17).setTextColor(br, bg, bb);
   doc.text(company.name, M, y);
   doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(80);
   const addrOneLiner = company.billingAddress.split("\n").join("  |  ");
@@ -101,8 +127,8 @@ export function downloadQuotationPdf(
   y += 82;
 
   // Line items table
-  doc.setFillColor(247, 181, 0).rect(M, y, W, 22, "F");
-  doc.setFont("helvetica", "bold").setFontSize(8.5).setTextColor(20);
+  doc.setFillColor(br, bg, bb).rect(M, y, W, 22, "F");
+  doc.setFont("helvetica", "bold").setFontSize(8.5).setTextColor(255, 255, 255);
   doc.text("#", M + 4, y + 14);
   doc.text("Description", M + 22, y + 14);
   doc.text("Qty", 356, y + 14, { align: "right" });
@@ -133,6 +159,21 @@ export function downloadQuotationPdf(
   const rx = PW - M - 6; // amount right-align x
 
   doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(80);
+  doc.text("Line items", lx, y);
+  doc.text(formatINRPdf(lineSubtotal), rx, y, { align: "right" });
+
+  if (mobilization > 0) {
+    y += 13;
+    doc.text("Mobilisation", lx, y);
+    doc.text(formatINRPdf(mobilization), rx, y, { align: "right" });
+  }
+  if (demobilization > 0) {
+    y += 13;
+    doc.text("Demobilisation", lx, y);
+    doc.text(formatINRPdf(demobilization), rx, y, { align: "right" });
+  }
+
+  y += 13;
   doc.text("Subtotal", lx, y);
   doc.text(formatINRPdf(subtotal), rx, y, { align: "right" });
 
@@ -159,7 +200,12 @@ export function downloadQuotationPdf(
   doc.text(formatINRPdf(grandTotal), rx, y + 7, { align: "right" });
   doc.setDrawColor(80).line(lx - 6, y + 12, PW - M, y + 12);
 
-  y += 28;
+  y += 16;
+  doc.setFont("helvetica", "italic").setFontSize(8).setTextColor(100);
+  const inWords = "Rupees " + numberToWords(grandTotal);
+  doc.text(doc.splitTextToSize(inWords, PW - M * 2), M, y + 4);
+
+  y += 16;
 
   // Payment terms
   doc.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(20);
@@ -179,13 +225,16 @@ export function downloadQuotationPdf(
 
   // Page 1 footer
   doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(160);
-  doc.text(`${company.name}  ·  GSTIN: ${company.gstin}  ·  Page 1 of 2`, PW / 2, PH - 22, { align: "center" });
+  doc.text(`${company.name}  ·  GSTIN: ${company.gstin}  ·  Page 1 of 2`, PW / 2, PH - 22, {
+    align: "center",
+  });
 
   // ── PAGE 2: Terms & Conditions ─────────────────────────────────────────────
   doc.addPage();
   y = 48;
 
-  doc.setFont("helvetica", "bold").setFontSize(14).setTextColor(216, 30, 39);
+  doc.setFillColor(br, bg, bb).rect(0, 0, PW, 6, "F");
+  doc.setFont("helvetica", "bold").setFontSize(14).setTextColor(br, bg, bb);
   doc.text(company.name, M, y);
   y += 20;
   doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(20);
@@ -209,7 +258,23 @@ export function downloadQuotationPdf(
   doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(60);
   const bankWrapped = doc.splitTextToSize(company.bankDetails, W / 2);
   doc.text(bankWrapped, M, y + 16);
-  y += bankWrapped.length * 13 + 30;
+  y += bankWrapped.length * 13 + 26;
+
+  // MD Contact details (collected from requirement — critical for payment follow-up)
+  const mdLines = [
+    client.mdName ? `Contact: ${client.mdName}` : "",
+    client.mdNumber ? `Phone: ${client.mdNumber}` : "",
+    client.mdEmail ? `Email: ${client.mdEmail}` : "",
+  ].filter(Boolean);
+  if (mdLines.length > 0) {
+    doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(20);
+    doc.text("Client MD Contact", M, y);
+    doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(60);
+    mdLines.forEach((ln, i) => {
+      doc.text(ln, M, y + 12 + i * 12);
+    });
+    y += mdLines.length * 12 + 16;
+  }
 
   // Acceptance
   doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(20);
@@ -217,7 +282,8 @@ export function downloadQuotationPdf(
   doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(60);
   doc.text(
     "I / We have read and accept the above quotation and the Terms & Conditions stated herein.",
-    M, y + 14,
+    M,
+    y + 14,
   );
   y += 44;
   doc.setDrawColor(140);
@@ -230,10 +296,17 @@ export function downloadQuotationPdf(
 
   // Page 2 footer
   doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(160);
-  doc.text(
-    `${company.name}  ·  ${q.quotationNo} v${q.version}  ·  Page 2 of 2`,
-    PW / 2, PH - 22, { align: "center" },
-  );
+  doc.text(`${company.name}  ·  ${q.quotationNo} v${q.version}  ·  Page 2 of 2`, PW / 2, PH - 22, {
+    align: "center",
+  });
 
+  return doc;
+}
+
+/**
+ * Generates and downloads a 2-page A4 quotation PDF.
+ */
+export function downloadQuotationPdf(q: Quotation, company: Company, client: QuotationClientInfo) {
+  const doc = generateQuotationPdf(q, company, client);
   doc.save(`${q.quotationNo}-v${q.version}.pdf`);
 }

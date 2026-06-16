@@ -83,6 +83,50 @@ export function relativeTime(d: string | Date | null | undefined): string {
   return formatDateIN(date);
 }
 
+/** Convert a number to Indian Rupees in words (e.g. 1250 → "One Thousand Two Hundred Fifty Rupees Only") */
+const ONES = [
+  "",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+function convertBelow1000(n: number): string {
+  if (n === 0) return "";
+  if (n < 20) return ONES[n];
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? " " + ONES[n % 10] : "");
+  return ONES[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + convertBelow1000(n % 100) : "");
+}
+export function numberToWords(n: number): string {
+  if (n === 0) return "Zero Rupees Only";
+  const crore = Math.floor(n / 10000000);
+  const lakh = Math.floor((n % 10000000) / 100000);
+  const thousand = Math.floor((n % 100000) / 1000);
+  const remainder = Math.floor(n % 1000);
+  const parts: string[] = [];
+  if (crore) parts.push(convertBelow1000(crore) + " Crore");
+  if (lakh) parts.push(convertBelow1000(lakh) + " Lakh");
+  if (thousand) parts.push(convertBelow1000(thousand) + " Thousand");
+  if (remainder) parts.push(convertBelow1000(remainder));
+  return (parts.join(" ") || "Zero") + " Rupees Only";
+}
+
 export function initialsOf(name: string | null | undefined): string {
   if (!name) return "U";
   return name

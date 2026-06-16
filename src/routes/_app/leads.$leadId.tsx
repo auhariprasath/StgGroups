@@ -4,29 +4,63 @@ import { useAuth } from "@/lib/auth";
 import { useDb } from "@/lib/data/store";
 import { activitiesFor, canSeeLead, userName, companyName } from "@/lib/data/selectors";
 import {
-  logActivity, setLeadStatus, completeFollowUp, completeSiteVisit, cancelSiteVisit,
+  logActivity,
+  setLeadStatus,
+  completeFollowUp,
+  completeSiteVisit,
+  cancelSiteVisit,
+  markInvalid,
+  reopenLead,
 } from "@/lib/data/actions";
 import { LEAD_STATUS, LEAD_FLOW, SOURCE_LABEL, VALID_TRANSITIONS } from "@/lib/status";
-import { StatusBadge, PriorityBadge } from "@/components/status-badge";
+import { StatusBadge, PriorityBadge, LeadTypeBadge } from "@/components/status-badge";
 import {
-  FollowUpDialog, NegotiationDialog, NotInterestedDialog, ReassignDialog, SiteVisitDialog,
+  FollowUpDialog,
+  NegotiationDialog,
+  NotInterestedDialog,
+  ReassignDialog,
+  SiteVisitDialog,
+  ExistingCustomerDialog,
 } from "@/components/leads/lead-action-dialogs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { buildWaMeLink, openWaMeLink } from "@/lib/utils";
 import { formatDateTimeIN, formatINR, initialsOf, relativeTime } from "@/lib/format";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Phone, MessageSquare, PhoneCall, HandCoins, XCircle, Share2,
-  FileText, ClipboardList, CheckCircle2, ChevronDown, Clock, IndianRupee,
-  Forward, CalendarClock, Check, X, MapPin, BadgeCheck, AlertTriangle,
-  PenLine, Send, Building2,
+  ArrowLeft,
+  Phone,
+  MessageSquare,
+  PhoneCall,
+  HandCoins,
+  XCircle,
+  Share2,
+  FileText,
+  ClipboardList,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  IndianRupee,
+  Forward,
+  CalendarClock,
+  Check,
+  X,
+  MapPin,
+  BadgeCheck,
+  AlertTriangle,
+  PenLine,
+  Send,
+  Building2,
+  RotateCcw,
 } from "lucide-react";
 import type { LeadStatus } from "@/lib/data/types";
 
@@ -77,6 +111,7 @@ function LeadDetail() {
   const [negotiate, setNegotiate] = useState(false);
   const [notInterested, setNotInterested] = useState(false);
   const [reassign, setReassign] = useState(false);
+  const [existingCheck, setExistingCheck] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
@@ -85,7 +120,9 @@ function LeadDetail() {
     return (
       <div className="rounded-xl border bg-card p-10 text-center">
         <p className="font-semibold">This lead belongs to another company.</p>
-        <p className="mt-1 text-sm text-muted-foreground">You can only view leads assigned to your team.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          You can only view leads assigned to your team.
+        </p>
         <Button asChild variant="outline" className="mt-4">
           <Link to="/leads">Back to leads</Link>
         </Button>
@@ -102,6 +139,7 @@ function LeadDetail() {
   const allFollowUps = db.followUps
     .filter((f) => f.leadId === leadId)
     .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+  const hasFollowUpOutcome = db.followUps.some((f) => f.leadId === leadId && f.outcome != null);
   const pendingFollowUps = allFollowUps.filter((f) => !f.done);
   const siteVisits = (db.siteVisits ?? [])
     .filter((sv) => sv.leadId === leadId)
@@ -110,13 +148,20 @@ function LeadDetail() {
   const negotiation = db.negotiations.find((n) => n.leadId === leadId);
   const notInterestedRecord = db.notInterested.find((n) => n.leadId === leadId);
   const notes = activities.filter((a) => a.kind === "note");
+  const transfers = (db.transferLogs ?? [])
+    .filter((t) => t.leadId === leadId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const tel = lead.phone.replace(/\D/g, "").slice(-10);
   const waBase = buildWaMeLink(lead.phone);
 
   const move = (s: LeadStatus) => {
-    setLeadStatus(leadId, s, user?.id ?? "u-md");
-    toast.success(`Moved to ${LEAD_STATUS[s].label}`);
+    try {
+      setLeadStatus(leadId, s, user?.id ?? "u-md");
+      toast.success(`Moved to ${LEAD_STATUS[s].label}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Status change failed");
+    }
   };
 
   const saveNote = () => {
@@ -143,7 +188,9 @@ function LeadDetail() {
       <div className="bg-card border rounded-lg p-4 md:p-5 mb-4">
         <div className="flex items-start gap-3">
           <Avatar className="h-12 w-12 shrink-0">
-            <AvatarFallback className="text-base font-semibold">{initialsOf(lead.name)}</AvatarFallback>
+            <AvatarFallback className="text-base font-semibold">
+              {initialsOf(lead.name)}
+            </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0">
@@ -156,12 +203,15 @@ function LeadDetail() {
                 </div>
               </div>
               <PriorityBadge priority={lead.priority} />
+              <LeadTypeBadge leadType={lead.leadType} />
             </div>
 
             {/* Meta row */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <StatusBadge status={lead.status} />
-              <span className="text-[11px] text-muted-foreground">Updated {relativeTime(lead.updatedAt)}</span>
+              <span className="text-[11px] text-muted-foreground">
+                Updated {relativeTime(lead.updatedAt)}
+              </span>
               {pendingFollowUps.length > 0 && (
                 <span className="text-[11px] bg-warning/15 text-warning border border-warning/30 rounded-full px-2 py-0.5">
                   Follow-up: {formatDateTimeIN(pendingFollowUps[0].dueAt)}
@@ -189,7 +239,9 @@ function LeadDetail() {
               </a>
               <button
                 type="button"
-                onClick={() => { if (waBase) openWaMeLink(waBase); }}
+                onClick={() => {
+                  if (waBase) openWaMeLink(waBase);
+                }}
                 className="inline-flex items-center gap-2 h-11 px-4 rounded-md bg-[#25d366] text-white text-sm font-medium"
               >
                 <MessageSquare className="h-4 w-4" /> WhatsApp
@@ -207,12 +259,15 @@ function LeadDetail() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem onClick={() => navigate({ to: "/requirement/$leadId", params: { leadId } })}>
-                    <ClipboardList className="h-4 w-4 mr-2" /> {requirement ? "Edit requirement" : "Gather requirement"}
+                  <DropdownMenuItem
+                    onClick={() => navigate({ to: "/requirement/$leadId", params: { leadId } })}
+                  >
+                    <ClipboardList className="h-4 w-4 mr-2" />{" "}
+                    {requirement ? "Edit requirement" : "Gather requirement"}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => navigate({ to: "/quotation/$leadId", params: { leadId } })}
-                    disabled={!requirement}
+                    disabled={!requirement || (quotations.length === 0 && !hasFollowUpOutcome)}
                   >
                     <FileText className="h-4 w-4 mr-2" /> Quotation
                   </DropdownMenuItem>
@@ -222,9 +277,26 @@ function LeadDetail() {
                   <DropdownMenuItem onClick={() => setReassign(true)}>
                     <Share2 className="h-4 w-4 mr-2" /> Transfer lead
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setExistingCheck(true)}>
+                    <BadgeCheck className="h-4 w-4 mr-2" /> Existing customer check
+                  </DropdownMenuItem>
                   {lead.needsManualRouting && (
                     <DropdownMenuItem onClick={() => setReassign(true)}>
                       <Forward className="h-4 w-4 mr-2" /> Forward lead
+                    </DropdownMenuItem>
+                  )}
+                  {(lead.status === "not_interested" || lead.status === "dormant") && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        try {
+                          reopenLead(leadId, user?.id ?? "u-md");
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Reopen failed");
+                        }
+                        toast.success("Lead reopened — back in follow-up");
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" /> Reopen lead
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
@@ -232,6 +304,15 @@ function LeadDetail() {
                     className="text-destructive focus:text-destructive"
                   >
                     <XCircle className="h-4 w-4 mr-2" /> Not interested
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      markInvalid(leadId, user?.id ?? "u-md", "Invalid lead");
+                      toast.success("Lead marked as invalid");
+                    }}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" /> Mark as invalid
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -249,9 +330,14 @@ function LeadDetail() {
                     if (!isValid && !isCurrent) return null;
                     return (
                       <DropdownMenuItem key={s} onClick={() => move(s)} disabled={isCurrent}>
-                        <span className="mr-2 h-2 w-2 rounded-full" style={{ backgroundColor: LEAD_STATUS[s].token }} />
+                        <span
+                          className="mr-2 h-2 w-2 rounded-full"
+                          style={{ backgroundColor: LEAD_STATUS[s].token }}
+                        />
                         {LEAD_STATUS[s].label}
-                        {isCurrent && <span className="ml-auto text-[10px] text-muted-foreground">current</span>}
+                        {isCurrent && (
+                          <span className="ml-auto text-[10px] text-muted-foreground">current</span>
+                        )}
                       </DropdownMenuItem>
                     );
                   })}
@@ -268,10 +354,18 @@ function LeadDetail() {
       {/* ── Tabs ── */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 text-[11px] h-auto">
-          <TabsTrigger value="overview" className="py-2">Overview</TabsTrigger>
-          <TabsTrigger value="reqs" className="py-2">Reqs</TabsTrigger>
-          <TabsTrigger value="booking" className="py-2">Booking</TabsTrigger>
-          <TabsTrigger value="activity" className="py-2">Activity</TabsTrigger>
+          <TabsTrigger value="overview" className="py-2">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="reqs" className="py-2">
+            Reqs
+          </TabsTrigger>
+          <TabsTrigger value="booking" className="py-2">
+            Booking
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="py-2">
+            Activity
+          </TabsTrigger>
           <TabsTrigger value="followups" className="relative py-2">
             Follow-ups
             {pendingFollowUps.length > 0 && (
@@ -288,8 +382,12 @@ function LeadDetail() {
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="whatsapp" className="py-2">WhatsApp</TabsTrigger>
-          <TabsTrigger value="note" className="py-2">Note</TabsTrigger>
+          <TabsTrigger value="whatsapp" className="py-2">
+            WhatsApp
+          </TabsTrigger>
+          <TabsTrigger value="note" className="py-2">
+            Note
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Overview ── */}
@@ -297,7 +395,10 @@ function LeadDetail() {
           <InfoRow label="Source" value={SOURCE_LABEL[lead.source]} />
           <InfoRow label="Company" value={companyName(db, lead.companyId)} />
           <InfoRow label="Assigned to" value={userName(db, lead.assignedToUserId)} />
-          <InfoRow label="Priority" value={lead.priority.charAt(0).toUpperCase() + lead.priority.slice(1)} />
+          <InfoRow
+            label="Priority"
+            value={lead.priority.charAt(0).toUpperCase() + lead.priority.slice(1)}
+          />
           <InfoRow label="Created" value={formatDateTimeIN(lead.createdAt)} />
 
           {lead.requestText && (
@@ -328,7 +429,9 @@ function LeadDetail() {
               </div>
               <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm">
                 <p className="font-medium">{upcomingMeetings[0].purpose}</p>
-                <p className="text-muted-foreground text-xs mt-0.5">{formatDateTimeIN(upcomingMeetings[0].scheduledAt)}</p>
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  {formatDateTimeIN(upcomingMeetings[0].scheduledAt)}
+                </p>
                 {upcomingMeetings[0].location && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                     <MapPin className="h-3 w-3" /> {upcomingMeetings[0].location}
@@ -358,11 +461,15 @@ function LeadDetail() {
                     <span className="text-muted-foreground">Competitor</span>
                     <span className="font-medium">
                       {negotiation.competitorName}
-                      {negotiation.competitorAmount ? ` · ${formatINR(negotiation.competitorAmount)}` : ""}
+                      {negotiation.competitorAmount
+                        ? ` · ${formatINR(negotiation.competitorAmount)}`
+                        : ""}
                     </span>
                   </div>
                 )}
-                {negotiation.note && <p className="pt-1 text-xs text-muted-foreground">{negotiation.note}</p>}
+                {negotiation.note && (
+                  <p className="pt-1 text-xs text-muted-foreground">{negotiation.note}</p>
+                )}
               </div>
             </div>
           )}
@@ -371,11 +478,19 @@ function LeadDetail() {
           {notInterestedRecord && (
             <div className="bg-destructive/5 border border-destructive/20 rounded-md p-3">
               <div className="text-xs font-semibold text-destructive mb-1">Not interested</div>
-              <div className="text-sm text-muted-foreground">{notInterestedRecord.reason.replace(/_/g, " ")}</div>
+              <div className="text-sm text-muted-foreground">
+                {notInterestedRecord.reason.replace(/_/g, " ")}
+              </div>
               {notInterestedRecord.competitorName && (
-                <div className="text-xs text-muted-foreground mt-0.5">Competitor: {notInterestedRecord.competitorName}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Competitor: {notInterestedRecord.competitorName}
+                </div>
               )}
-              {notInterestedRecord.note && <div className="text-xs text-muted-foreground mt-0.5">{notInterestedRecord.note}</div>}
+              {notInterestedRecord.note && (
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {notInterestedRecord.note}
+                </div>
+              )}
             </div>
           )}
         </TabsContent>
@@ -398,9 +513,17 @@ function LeadDetail() {
             <div className="bg-card border rounded-md p-3">
               <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
                 {requirement.fields.map((f) => (
-                  <div key={f.key} className="flex justify-between gap-3 border-b border-dashed py-1.5 text-sm">
+                  <div
+                    key={f.key}
+                    className="flex justify-between gap-3 border-b border-dashed py-1.5 text-sm"
+                  >
                     <span className="text-muted-foreground">{f.label}</span>
-                    <span className={cn("text-right font-medium", f.value === "nil" && "italic text-muted-foreground")}>
+                    <span
+                      className={cn(
+                        "text-right font-medium",
+                        f.value === "nil" && "italic text-muted-foreground",
+                      )}
+                    >
                       {f.value || "—"}
                     </span>
                   </div>
@@ -409,7 +532,8 @@ function LeadDetail() {
             </div>
           ) : (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No requirement gathered yet. Click "Gather requirement" to fill in site, company, and delivery details.
+              No requirement gathered yet. Click "Gather requirement" to fill in site, company, and
+              delivery details.
             </div>
           )}
 
@@ -442,7 +566,8 @@ function LeadDetail() {
                     >
                       <div>
                         <p className="font-semibold">
-                          {q.quotationNo} <span className="text-muted-foreground">· v{q.version}</span>
+                          {q.quotationNo}{" "}
+                          <span className="text-muted-foreground">· v{q.version}</span>
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {q.date} · valid till {q.validityDate} ·{" "}
@@ -476,11 +601,15 @@ function LeadDetail() {
                   </div>
                   <div className="rounded-lg bg-success/10 p-3">
                     <p className="text-[11px] text-muted-foreground">Advance</p>
-                    <p className="font-semibold text-sm text-success">{formatINR(payment.advanceAmount)}</p>
+                    <p className="font-semibold text-sm text-success">
+                      {formatINR(payment.advanceAmount)}
+                    </p>
                   </div>
                   <div className="rounded-lg bg-destructive/10 p-3">
                     <p className="text-[11px] text-muted-foreground">Balance</p>
-                    <p className="font-semibold text-sm text-destructive">{formatINR(payment.balanceAmount)}</p>
+                    <p className="font-semibold text-sm text-destructive">
+                      {formatINR(payment.balanceAmount)}
+                    </p>
                   </div>
                 </div>
                 <p className="text-center text-xs text-muted-foreground">
@@ -492,33 +621,44 @@ function LeadDetail() {
               </div>
 
               {/* Confirmed quotation */}
-              {quotations.filter((q) => q.status === "accepted" || q.status === "sent").map((q) => {
-                const total = q.lines.reduce((s, l) => s + l.qty * l.rate, 0);
-                return (
-                  <div key={q.id} className="bg-card border rounded-md p-3 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                        {q.quotationNo} v{q.version}
-                        <span className={cn(
-                          "text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5",
-                          q.status === "accepted" ? "bg-success/15 text-success" : "bg-blue-500/15 text-blue-500",
-                        )}>
-                          {q.status}
-                        </span>
+              {quotations
+                .filter((q) => q.status === "accepted" || q.status === "sent")
+                .map((q) => {
+                  const total = q.lines.reduce((s, l) => s + l.qty * l.rate, 0);
+                  return (
+                    <div
+                      key={q.id}
+                      className="bg-card border rounded-md p-3 flex items-center justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                          {q.quotationNo} v{q.version}
+                          <span
+                            className={cn(
+                              "text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5",
+                              q.status === "accepted"
+                                ? "bg-success/15 text-success"
+                                : "bg-blue-500/15 text-blue-500",
+                            )}
+                          >
+                            {q.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{q.date}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{q.date}</p>
+                      <span className="font-semibold">{formatINR(total)}</span>
                     </div>
-                    <span className="font-semibold">{formatINR(total)}</span>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           ) : quotations.length > 0 ? (
             <div className="bg-card border rounded-md p-6 text-center text-sm text-muted-foreground">
               <IndianRupee className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
               <p>Payment tracking starts once a quotation is accepted and confirmed.</p>
-              <p className="text-xs mt-1">Update the lead status to "Confirmed" to generate a proforma.</p>
+              <p className="text-xs mt-1">
+                Update the lead status to "Confirmed" to generate a proforma.
+              </p>
             </div>
           ) : (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -567,31 +707,47 @@ function LeadDetail() {
                 const overdue = !f.done && new Date(f.dueAt).getTime() < Date.now();
                 return (
                   <div key={f.id} className="bg-card border rounded-md p-3 flex items-center gap-3">
-                    <span className={cn(
-                      "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
-                      f.done ? "bg-success/10 text-success"
-                        : overdue ? "bg-destructive/10 text-destructive"
-                        : "bg-primary/10 text-primary",
-                    )}>
-                      {f.done ? <CheckCircle2 className="h-4 w-4" /> : <PhoneCall className="h-4 w-4" />}
+                    <span
+                      className={cn(
+                        "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
+                        f.done
+                          ? "bg-success/10 text-success"
+                          : overdue
+                            ? "bg-destructive/10 text-destructive"
+                            : "bg-primary/10 text-primary",
+                      )}
+                    >
+                      {f.done ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <PhoneCall className="h-4 w-4" />
+                      )}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-sm">{f.reason}</p>
                       {f.note && <p className="truncate text-xs text-muted-foreground">{f.note}</p>}
-                      <p className={cn(
-                        "text-xs",
-                        f.done ? "text-muted-foreground line-through"
-                          : overdue ? "font-medium text-destructive"
-                          : "text-muted-foreground",
-                      )}>
-                        {overdue && !f.done ? "Overdue · " : ""}{formatDateTimeIN(f.dueAt)}
+                      <p
+                        className={cn(
+                          "text-xs",
+                          f.done
+                            ? "text-muted-foreground line-through"
+                            : overdue
+                              ? "font-medium text-destructive"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {overdue && !f.done ? "Overdue · " : ""}
+                        {formatDateTimeIN(f.dueAt)}
                       </p>
                     </div>
                     {!f.done ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => { completeFollowUp(f.id); toast.success("Follow-up marked done"); }}
+                        onClick={() => {
+                          completeFollowUp(f.id);
+                          toast.success("Follow-up marked done");
+                        }}
                       >
                         <Check className="mr-1 h-3.5 w-3.5" /> Done
                       </Button>
@@ -618,7 +774,8 @@ function LeadDetail() {
 
           {siteVisits.length === 0 ? (
             <div className="text-sm text-muted-foreground py-6 text-center">
-              No venue meetings scheduled yet. Click Schedule to plan a site visit or client meeting.
+              No venue meetings scheduled yet. Click Schedule to plan a site visit or client
+              meeting.
             </div>
           ) : (
             <div className="space-y-2">
@@ -627,27 +784,42 @@ function LeadDetail() {
                 const isUpcoming = sv.status === "scheduled";
                 return (
                   <div key={sv.id} className="bg-card border rounded-md p-3 flex items-start gap-3">
-                    <span className={cn(
-                      "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg",
-                      sv.status === "completed" ? "bg-success/10 text-success"
-                        : sv.status === "cancelled" ? "bg-muted text-muted-foreground"
-                        : isPast ? "bg-warning/10 text-warning"
-                        : "bg-blue-500/10 text-blue-500",
-                    )}>
-                      {sv.status === "completed" ? <BadgeCheck className="h-4 w-4" />
-                        : sv.status === "cancelled" ? <X className="h-4 w-4" />
-                        : isPast ? <AlertTriangle className="h-4 w-4" />
-                        : <CalendarClock className="h-4 w-4" />}
+                    <span
+                      className={cn(
+                        "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg",
+                        sv.status === "completed"
+                          ? "bg-success/10 text-success"
+                          : sv.status === "cancelled"
+                            ? "bg-muted text-muted-foreground"
+                            : isPast
+                              ? "bg-warning/10 text-warning"
+                              : "bg-blue-500/10 text-blue-500",
+                      )}
+                    >
+                      {sv.status === "completed" ? (
+                        <BadgeCheck className="h-4 w-4" />
+                      ) : sv.status === "cancelled" ? (
+                        <X className="h-4 w-4" />
+                      ) : isPast ? (
+                        <AlertTriangle className="h-4 w-4" />
+                      ) : (
+                        <CalendarClock className="h-4 w-4" />
+                      )}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-sm">{sv.purpose}</p>
-                      <p className={cn(
-                        "text-xs mt-0.5",
-                        sv.status === "cancelled" ? "text-muted-foreground line-through"
-                          : isPast && isUpcoming ? "font-medium text-warning"
-                          : "text-muted-foreground",
-                      )}>
-                        {isPast && isUpcoming ? "Overdue · " : ""}{formatDateTimeIN(sv.scheduledAt)}
+                      <p
+                        className={cn(
+                          "text-xs mt-0.5",
+                          sv.status === "cancelled"
+                            ? "text-muted-foreground line-through"
+                            : isPast && isUpcoming
+                              ? "font-medium text-warning"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {isPast && isUpcoming ? "Overdue · " : ""}
+                        {formatDateTimeIN(sv.scheduledAt)}
                       </p>
                       {sv.location && (
                         <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
@@ -655,14 +827,19 @@ function LeadDetail() {
                         </p>
                       )}
                       {sv.note && <p className="mt-0.5 text-xs text-muted-foreground">{sv.note}</p>}
-                      <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{sv.status}</p>
+                      <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {sv.status}
+                      </p>
                     </div>
                     {sv.status === "scheduled" && (
                       <div className="flex shrink-0 gap-1.5">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => { completeSiteVisit(sv.id, user?.id ?? "u-md"); toast.success("Meeting marked completed"); }}
+                          onClick={() => {
+                            completeSiteVisit(sv.id, user?.id ?? "u-md");
+                            toast.success("Meeting marked completed");
+                          }}
                         >
                           <Check className="mr-1 h-3.5 w-3.5" /> Done
                         </Button>
@@ -670,7 +847,10 @@ function LeadDetail() {
                           size="sm"
                           variant="ghost"
                           className="text-muted-foreground"
-                          onClick={() => { cancelSiteVisit(sv.id); toast.success("Meeting cancelled"); }}
+                          onClick={() => {
+                            cancelSiteVisit(sv.id);
+                            toast.success("Meeting cancelled");
+                          }}
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -728,11 +908,7 @@ function LeadDetail() {
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
             />
-            <Button
-              size="sm"
-              onClick={saveNote}
-              disabled={!noteText.trim() || savingNote}
-            >
+            <Button size="sm" onClick={saveNote} disabled={!noteText.trim() || savingNote}>
               {savingNote ? "Saving…" : "Save note"}
             </Button>
           </div>
@@ -768,6 +944,11 @@ function LeadDetail() {
       <NegotiationDialog leadId={leadId} open={negotiate} onOpenChange={setNegotiate} />
       <NotInterestedDialog leadId={leadId} open={notInterested} onOpenChange={setNotInterested} />
       <ReassignDialog leadId={leadId} open={reassign} onOpenChange={setReassign} />
+      <ExistingCustomerDialog
+        leadId={leadId}
+        open={existingCheck}
+        onOpenChange={setExistingCheck}
+      />
     </>
   );
 }
@@ -793,7 +974,12 @@ function Stepper({ status }: { status: LeadStatus }) {
                 className={cn("h-2.5 w-2.5 rounded-full transition-colors", done ? "" : "bg-muted")}
                 style={done ? { backgroundColor: LEAD_STATUS[s].token } : undefined}
               />
-              <span className={cn("whitespace-nowrap text-[10px] font-medium", done ? "text-foreground" : "text-muted-foreground")}>
+              <span
+                className={cn(
+                  "whitespace-nowrap text-[10px] font-medium",
+                  done ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
                 {LEAD_STATUS[s].label}
               </span>
             </div>

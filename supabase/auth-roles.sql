@@ -45,7 +45,8 @@ do $$ declare t text; begin
   foreach t in array array[
     'companies','product_categories','app_users','leads','activities',
     'requirements','quotations','payments','follow_ups','negotiations',
-    'not_interested','targets','unserved_requests'
+    'not_interested','targets','unserved_requests',
+    'followup_timeline','followup_reminders','negative_reason_analytics'
   ]
   loop execute format('drop policy if exists "anon_all_%1$s" on public.%1$I;', t); end loop;
 end $$;
@@ -74,7 +75,7 @@ end $$;
 -- ---------- lead-linked tables (company derived via leads) ------------------
 -- payments has no company_id of its own — scope it through its lead.
 do $$ declare t text; begin
-  foreach t in array array['activities','follow_ups','negotiations','not_interested','payments'] loop
+  foreach t in array array['activities','follow_ups','negotiations','not_interested','payments','followup_timeline','followup_reminders','negative_reason_analytics'] loop
     execute format('drop policy if exists "%1$s_scope" on public.%1$I;', t);
     execute format(
       'create policy "%1$s_scope" on public.%1$I for all to authenticated '

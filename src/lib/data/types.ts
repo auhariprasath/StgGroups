@@ -13,15 +13,17 @@ export type Role = "super_admin" | "exec";
 
 /** The single lead lifecycle. Every lead is in exactly one of these. */
 export type LeadStatus =
-  | "new"           // just arrived, not yet actioned
-  | "followup"      // contacted, awaiting callback
-  | "interested"    // gathering requirement
-  | "negotiation"   // haggling on price
-  | "quote_sent"    // quotation issued
-  | "confirmed"     // amount fixed, proforma/advance stage
-  | "completed"     // 100% paid, requirement closed
+  | "new" // just arrived, not yet actioned
+  | "first_contact" // initial contact made
+  | "followup" // contacted, awaiting callback
+  | "requirements" // gathering requirement (replaces "interested")
+  | "quote_sent" // quotation issued
+  | "negotiation" // haggling on price
+  | "work_order" // work order issued
+  | "active_project" // project in progress
+  | "completed" // 100% paid, requirement closed
   | "not_interested" // dropped (with reason)
-  | "dormant";      // unresponsive; can be reactivated
+  | "dormant"; // unresponsive; can be reactivated
 
 export interface StatusHistoryEntry {
   id: string;
@@ -66,6 +68,31 @@ export interface ProductCategory {
   name: string;
   /** Alternate spellings/keywords seen on JustDial/IndiaMart/phone. */
   synonyms: string[];
+}
+
+export interface Machine {
+  id: string;
+  categoryId: string;
+  companyId: CompanyId;
+  name: string;
+  make: string;
+  model: string;
+  platformHeight?: string;
+  workingHeight?: string;
+  capacity?: string;
+  machineWeight?: string;
+  engine?: string;
+  driveSpeed?: string;
+  fuelType?: string;
+  specifications?: string;
+  rentalCategory?: string;
+  safetyNotes?: string;
+  imageUrl?: string;
+  dailyRate?: number;
+  /** Fleet availability — used by the quotation availability engine. */
+  availabilityStatus?: "available" | "reserved" | "maintenance" | "booked";
+  /** ISO date the machine becomes available again (when booked/maintenance). */
+  availableFrom?: string;
 }
 
 export interface User {
@@ -130,6 +157,12 @@ export interface QuotationLine {
   qty: number;
   unit: string;
   rate: number;
+  machineId?: string;
+  machineName?: string;
+  workingHeight?: string;
+  platformHeight?: string;
+  capacity?: string;
+  powerSupply?: string;
 }
 
 export interface Quotation {
@@ -150,29 +183,81 @@ export interface Quotation {
   ratePerDayNote?: string;
   workOrderRef?: string;
   approvedBy?: string;
-  status: "draft" | "sent" | "accepted" | "expired";
+  status: "draft" | "pending_approval" | "sent" | "accepted" | "expired";
   deliveryAddress: string;
   deliveryGstin: string;
   /** GST rate applied to the subtotal (0 = exempt/no-GST). Default 18. */
   gstPercent: number;
+  /** Dedicated mobilisation / demobilisation charges (added to subtotal). */
+  mobilizationCharge?: number;
+  demobilizationCharge?: number;
+  /** View tracking — set when the customer is recorded as having viewed it. */
+  viewedAt?: string;
+  viewCount?: number;
+  /** Customer response after a sent quotation. */
+  customerResponse?: CustomerResponseType;
+  customerResponseNote?: string;
+  customerResponseAt?: string;
+  /** Lock engine — set when accepted; blocks edit/delete, allows view/revision. */
+  lockedAt?: string;
 }
 
-export interface ProformaInvoice {
+export type CustomerResponseType =
+  | "accepted"
+  | "too_costly"
+  | "need_discount"
+  | "competitor_quote"
+  | "requirement_change"
+  | "no_response"
+  | "under_review";
+
+export interface WorkOrder {
   id: string;
-  proformaNo: string;       // e.g. STGR-PI-2026-001
+  workOrderNo: string;
   leadId: string;
   quotationId: string;
   quotationNo: string;
   companyId: CompanyId;
-  date: string;             // ISO date string
-  validUntil: string;       // ISO date string
+  date: string;
+  validUntil: string;
+  subtotal: number;
+  gstPercent: number;
+  gstAmount: number;
+  total: number;
+  advancePercent: number;
+  advanceAmount: number;
+  balanceAmount: number;
+  clientName: string;
+  clientCompany?: string;
+  clientAddress?: string;
+  clientGstin?: string;
+  clientContactPerson?: string;
+  deliveryAddress?: string;
+  deliveryGstin?: string;
+  poReference?: string;
+  acceptanceRemark?: string;
+  note?: string;
+  status: "draft" | "sent" | "accepted";
+}
+
+export interface ProformaInvoice {
+  id: string;
+  proformaNo: string; // e.g. STGR-PI-2026-001
+  leadId: string;
+  quotationId: string;
+  quotationNo: string;
+  workOrderId?: string;
+  workOrderNo?: string;
+  companyId: CompanyId;
+  date: string; // ISO date string
+  validUntil: string; // ISO date string
   // Amounts snapshot at time of PI creation
   subtotal: number;
   gstPercent: number;
   gstAmount: number;
-  total: number;            // subtotal + gstAmount
+  total: number; // subtotal + gstAmount
   advancePercent: number;
-  advanceAmount: number;    // what is due right now
+  advanceAmount: number; // what is due right now
   balanceAmount: number;
   // Client info snapshot
   clientName: string;
@@ -184,6 +269,62 @@ export interface ProformaInvoice {
   deliveryGstin?: string;
   note?: string;
   status: "draft" | "sent" | "paid";
+}
+
+export interface PaymentRecord {
+  id: string;
+  leadId: string;
+  invoiceId: string;
+  invoiceType: "proforma" | "tax";
+  amount: number;
+  date: string;
+  mode: "NEFT" | "RTGS" | "UPI" | "Cheque" | "Cash" | "Card" | "Other";
+  reference: string;
+  remarks?: string;
+  tdsDeducted: number;
+  netAmount: number;
+  utrProof?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  status: "pending" | "verified" | "approved" | "rejected";
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface InvoiceStatusHistoryEntry {
+  id: string;
+  invoiceId: string;
+  invoiceType: "proforma" | "tax";
+  oldStatus: string;
+  newStatus: string;
+  changedBy: string;
+  changedAt: string;
+  remarks?: string;
+}
+
+export interface RequirementAuditLog {
+  id: string;
+  requirementId: string;
+  actionType: string; // "created" | "updated" | "nil_resolved" | "nil_alerted"
+  fieldKey?: string;
+  oldValue?: string;
+  newValue?: string;
+  changedBy: string;
+  changedAt: string;
+}
+
+export interface CommunicationLog {
+  id: string;
+  leadId: string;
+  invoiceId: string;
+  invoiceType: "proforma" | "tax";
+  method: "whatsapp" | "email";
+  recipient: string;
+  subject: string;
+  body: string;
+  deliveryStatus: "sent" | "delivered" | "read" | "failed";
+  sentAt: string;
+  sentBy: string;
 }
 
 export interface TaxInvoiceLine {
@@ -198,23 +339,23 @@ export interface TaxInvoiceLine {
 
 export interface TaxInvoice {
   id: string;
-  invoiceNo: string;      // e.g. STGR-INV-2026-001
+  invoiceNo: string; // e.g. STGR-INV-2026-001
   leadId: string;
   quotationId?: string;
   quotationNo?: string;
   proformaId?: string;
   proformaNo?: string;
   companyId: CompanyId;
-  date: string;           // ISO date
-  dueDate: string;        // ISO date
+  date: string; // ISO date
+  dueDate: string; // ISO date
   lines: TaxInvoiceLine[];
-  placeOfSupply: string;  // e.g. "Karnataka (29)"
+  placeOfSupply: string; // e.g. "Karnataka (29)"
   gstPercent: number;
-  subtotal: number;       // sum of taxableAmounts
-  gstAmount: number;      // subtotal * gstPercent / 100
-  total: number;          // subtotal + gstAmount (invoice value)
+  subtotal: number; // sum of taxableAmounts
+  gstAmount: number; // subtotal * gstPercent / 100
+  total: number; // subtotal + gstAmount (invoice value)
   advanceReceived: number;
-  balanceDue: number;     // total - advanceReceived
+  balanceDue: number; // total - advanceReceived
   // Client snapshot
   clientName: string;
   clientCompany?: string;
@@ -227,7 +368,12 @@ export interface TaxInvoice {
   status: "draft" | "sent" | "paid";
 }
 
-export type PaymentStage = "none" | "proforma_sent" | "advance_paid" | "fully_paid";
+export type PaymentStage =
+  | "none"
+  | "proforma_sent"
+  | "advance_paid"
+  | "partially_paid"
+  | "fully_paid";
 
 export interface Payment {
   id: string;
@@ -237,6 +383,8 @@ export interface Payment {
   total: number;
   advanceAmount: number;
   balanceAmount: number;
+  tdsPercent: number;
+  tdsAmount: number;
   copyToAdmin: boolean;
   updatedAt: string;
 }
@@ -289,6 +437,8 @@ export interface NegotiationRecord {
   competitorName?: string;
   competitorAmount?: number;
   note?: string;
+  /** Number of negotiation rounds recorded; 3+ auto-escalates to MD. */
+  rounds?: number;
 }
 
 export type NotInterestedReason =
@@ -302,7 +452,7 @@ export type NotInterestedReason =
   | "timing_issue"
   | "product_not_available"
   | "other"
-  | "funds"    // legacy aliases kept for existing seed data
+  | "funds" // legacy aliases kept for existing seed data
   | "low_offer"
   | "competitor";
 
@@ -322,30 +472,43 @@ export interface Target {
   achieved: number;
 }
 
+export type DuplicateMatchType = "mobile" | "gst" | "company" | "fuzzy" | "email";
+export type DuplicateAction = "merged" | "ignored" | "linked";
+
+export interface DuplicateDetectionLog {
+  id: string;
+  leadId: string;
+  matchedLeadId: string | null;
+  matchType: DuplicateMatchType;
+  confidenceScore: number;
+  actionTaken: DuplicateAction;
+  actionedBy: string;
+  createdAt: string;
+}
+
+export type LeadType = "new_lead" | "existing_contact" | "active_negotiation";
+
 export interface Lead {
   id: string;
   name: string;
   phone: string;
-  /** Optional contact email — used for duplicate detection (Phase 2). */
   email?: string;
-  /** Customer's company / organisation name. */
   customerCompany?: string;
-  /** Project site city or area. */
   location?: string;
-  /** Customer's GST number — enables cross-company duplicate detection. */
   gstNumber?: string;
   source: LeadSource;
   status: LeadStatus;
+  previousStatus?: LeadStatus;
+  statusChangedAt?: string;
+  statusChangedBy?: string;
   priority: Priority;
   companyId: CompanyId;
-  /** Equipment category the request matched (drives spec fields). */
   categoryId: string | null;
   assignedToUserId: string | null;
   requestText: string;
-  /** Set when intake couldn't classify (phone call, unknown product). */
   needsManualRouting: boolean;
-  /** Product we don't carry — logged for the "common requests" board. */
   unservedRequest?: string;
+  leadType?: LeadType;
   createdAt: string;
   updatedAt: string;
 }
@@ -378,9 +541,100 @@ export interface SiteVisit {
   status: SiteVisitStatus;
 }
 
+export interface LeadSourceRecord {
+  sourceName: string;
+  sourceType: string;
+  webhookEnabled: boolean;
+  status: "active" | "inactive";
+}
+
+export interface ProductAliasMapping {
+  id: string;
+  keyword: string;
+  actualProduct: string;
+  company: string;
+  confidenceScore: number;
+  createdAt: string;
+}
+
+export interface LeadAssignmentHistory {
+  id: string;
+  leadId: string;
+  oldOwner: string | null;
+  newOwner: string;
+  reason: string;
+  assignedBy: string;
+  createdAt: string;
+}
+
+export interface ExistingCustomerHistory {
+  id: string;
+  customerMobile: string;
+  previousQuotations: any[];
+  previousInvoices: any[];
+  previousPayments: any[];
+  previousFollowups: any[];
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  read: boolean;
+  linkTo?: string;
+  createdAt: string;
+}
+
+export interface TransferLog {
+  id: string;
+  leadId: string;
+  fromCompanyId: CompanyId;
+  toCompanyId: CompanyId;
+  fromUserId: string;
+  toUserId: string;
+  reasonType: "wrong_product" | "wrong_company" | "customer_changed" | "business_decision";
+  note: string;
+  transferredBy: string;
+  createdAt: string;
+}
+
+export interface FollowupTimelineEntry {
+  id: string;
+  leadId: string;
+  actionType: string;
+  description: string;
+  createdBy: string;
+  timestamp: string;
+}
+
+export interface FollowupReminder {
+  id: string;
+  leadId: string;
+  handlerName: string;
+  reminderDate: string;
+  reminderTime: string;
+  status: "pending" | "sent" | "cancelled";
+  notificationSent: boolean;
+  createdAt: string;
+}
+
+export interface NegativeReasonAnalytic {
+  id: string;
+  leadId: string;
+  companyName: string;
+  reasonType: string;
+  competitorName?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface Db {
   companies: Company[];
   categories: ProductCategory[];
+  machines: Machine[];
   users: User[];
   leads: Lead[];
   activities: Activity[];
@@ -389,6 +643,9 @@ export interface Db {
   proformaInvoices: ProformaInvoice[];
   taxInvoices: TaxInvoice[];
   payments: Payment[];
+  workOrders: WorkOrder[];
+  paymentRecords: PaymentRecord[];
+  invoiceStatusHistory: InvoiceStatusHistoryEntry[];
   followUps: FollowUp[];
   siteVisits: SiteVisit[];
   negotiations: NegotiationRecord[];
@@ -396,4 +653,16 @@ export interface Db {
   targets: Target[];
   unserved: UnservedRequest[];
   statusHistory: StatusHistoryEntry[];
+  transferLogs: TransferLog[];
+  leadSources: LeadSourceRecord[];
+  aliasMappings: ProductAliasMapping[];
+  assignmentHistory: LeadAssignmentHistory[];
+  existingCustomerHistory: ExistingCustomerHistory[];
+  duplicateLogs: DuplicateDetectionLog[];
+  notifications: AppNotification[];
+  followupTimeline: FollowupTimelineEntry[];
+  followupReminders: FollowupReminder[];
+  negativeReasonAnalytics: NegativeReasonAnalytic[];
+  requirementAuditLogs: RequirementAuditLog[];
+  communicationLogs: CommunicationLog[];
 }

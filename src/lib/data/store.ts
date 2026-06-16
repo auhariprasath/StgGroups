@@ -3,6 +3,9 @@ import type { Db } from "./types";
 import { supabase } from "@/lib/supabase";
 import { fetchAll, upsertAll, emptyDb } from "./supabase-adapter";
 import { buildSeed } from "./seed";
+import { startRealtime, stopRealtime } from "@/lib/realtime";
+import { startEscalationEngine, stopEscalationEngine } from "@/lib/escalation";
+import { fireMorningDigest } from "@/lib/morning-digest";
 
 /**
  * Reactive client cache over Supabase. All data lives in Postgres; this keeps a
@@ -19,7 +22,7 @@ const listeners = new Set<() => void>();
 let db: Db = emptyDb();
 let snapshotCache: Db = db;
 
-function setDb(next: Db) {
+function setDbInternal(next: Db) {
   db = next;
   snapshotCache = db;
   listeners.forEach((l) => l());
@@ -29,6 +32,11 @@ export function getDb(): Db {
   return snapshotCache;
 }
 
+/** Replace the entire database snapshot (used by realtime subscriptions). */
+export function setDb(next: Db): void {
+  setDbInternal(next);
+}
+
 /** Load everything the signed-in user is allowed to see. */
 export async function hydrateStore(): Promise<void> {
   if (!supabase) return;
@@ -36,24 +44,57 @@ export async function hydrateStore(): Promise<void> {
     const data = await fetchAll();
     if (data.companies.length === 0) {
       // First-time setup: static config tables are empty.
-      // Push companies, categories, users and targets so the app is immediately usable.
+      // Push companies, categories, users, targets, lead_sources, alias_mappings so the app is immediately usable.
       const seed = buildSeed();
-      const toSeed: Db = { ...emptyDb(), companies: seed.companies, categories: seed.categories, users: seed.users, targets: seed.targets };
+      const toSeed: Db = {
+        ...emptyDb(),
+        companies: seed.companies,
+        categories: seed.categories,
+        machines: seed.machines,
+        users: seed.users,
+        targets: seed.targets,
+        leadSources: seed.leadSources,
+        aliasMappings: seed.aliasMappings,
+      };
       await upsertAll(toSeed);
-      setDb({ ...data, companies: seed.companies, categories: seed.categories, users: seed.users, targets: seed.targets });
+      setDb({
+        ...data,
+        companies: seed.companies,
+        categories: seed.categories,
+        users: seed.users,
+        targets: seed.targets,
+        leadSources: seed.leadSources,
+        aliasMappings: seed.aliasMappings,
+      });
     } else {
       setDb(data);
     }
+    // Start realtime subscriptions so other browsers / tabs stay in sync.
+    startRealtime();
+    // Start escalation engine (checks every 60 s for unactioned leads).
+    startEscalationEngine();
+    // Fire daily morning digest for executives (once per user per day).
+    fireMorningDigest();
   } catch (err) {
     console.error("[store] hydrate failed:", err);
     // On fetch error fall back to static seed so the UI stays functional.
     const seed = buildSeed();
-    setDb({ ...emptyDb(), companies: seed.companies, categories: seed.categories, users: seed.users, targets: seed.targets });
+    setDb({
+      ...emptyDb(),
+      companies: seed.companies,
+      categories: seed.categories,
+      machines: seed.machines,
+      users: seed.users,
+      targets: seed.targets,
+    });
+    fireMorningDigest();
   }
 }
 
 /** Drop all cached data (on sign-out). */
 export function clearStore(): void {
+  stopRealtime();
+  stopEscalationEngine();
   setDb(emptyDb());
 }
 
@@ -65,7 +106,9 @@ function setSaveStatus(s: SaveStatus) {
   saveStatus = s;
   saveListeners.forEach((l) => l());
 }
-export function getSaveStatus(): SaveStatus { return saveStatus; }
+export function getSaveStatus(): SaveStatus {
+  return saveStatus;
+}
 export function subscribeSaveStatus(cb: () => void) {
   saveListeners.add(cb);
   return () => saveListeners.delete(cb);

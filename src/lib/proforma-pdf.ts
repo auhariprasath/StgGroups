@@ -30,6 +30,9 @@ export function downloadProformaPdf(pi: ProformaInvoice, company: Company) {
   doc.text(`Date:  ${pi.date}`, PW - M, y + 30, { align: "right" });
   doc.text(`Valid till:  ${pi.validUntil}`, PW - M, y + 42, { align: "right" });
   doc.text(`Ref Quotation:  ${pi.quotationNo}`, PW - M, y + 54, { align: "right" });
+  if (pi.workOrderNo) {
+    doc.text(`Work Order: ${pi.workOrderNo}`, PW - M, y + 66, { align: "right" });
+  }
 
   y += 74;
   doc.setDrawColor(210).line(M, y, PW - M, y);
@@ -101,7 +104,11 @@ export function downloadProformaPdf(pi: ProformaInvoice, company: Company) {
   doc.setFontSize(16).setTextColor(20);
   doc.text(formatINRPdf(pi.advanceAmount), PW - M - 12, y + 30, { align: "right" });
   doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(80, 60, 0);
-  doc.text(`Balance of ${formatINRPdf(pi.balanceAmount)} due as per quotation payment terms.`, M + 12, y + 36);
+  doc.text(
+    `Balance of ${formatINRPdf(pi.balanceAmount)} due as per quotation payment terms.`,
+    M + 12,
+    y + 36,
+  );
 
   y += 62;
 
@@ -147,13 +154,14 @@ export function downloadProformaPdf(pi: ProformaInvoice, company: Company) {
   doc.setFont("helvetica", "italic").setFontSize(7.5).setTextColor(140);
   doc.text(
     "This is a Proforma Invoice only and not a Tax Invoice. GST input credit cannot be claimed on this document.",
-    PW / 2, PH - 36, { align: "center" },
+    PW / 2,
+    PH - 36,
+    { align: "center" },
   );
   doc.setFont("helvetica", "normal").setTextColor(160);
-  doc.text(
-    `${company.name}  ·  GSTIN: ${company.gstin}  ·  ${pi.proformaNo}`,
-    PW / 2, PH - 22, { align: "center" },
-  );
+  doc.text(`${company.name}  ·  GSTIN: ${company.gstin}  ·  ${pi.proformaNo}`, PW / 2, PH - 22, {
+    align: "center",
+  });
 
   doc.save(`${pi.proformaNo}.pdf`);
 }

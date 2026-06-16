@@ -25,7 +25,11 @@ export const SPEC_FIELDS: Record<string, SpecField[]> = {
   "c-scissor": [
     { key: "spec_height", label: "Platform height", placeholder: "e.g. 12 m" },
     { key: "spec_capacity", label: "Platform capacity", placeholder: "e.g. 320 kg" },
-    { key: "spec_power", label: "Indoor / Outdoor", placeholder: "Electric (indoor) / Diesel (rough terrain)" },
+    {
+      key: "spec_power",
+      label: "Indoor / Outdoor",
+      placeholder: "Electric (indoor) / Diesel (rough terrain)",
+    },
   ],
   "c-man": [
     { key: "spec_height", label: "Working height", placeholder: "e.g. 8 m" },
@@ -72,32 +76,40 @@ export const SPEC_FIELDS: Record<string, SpecField[]> = {
 };
 
 export function specFieldsFor(categoryId: string | null | undefined): SpecField[] {
-  return categoryId ? SPEC_FIELDS[categoryId] ?? [] : [];
+  return categoryId ? (SPEC_FIELDS[categoryId] ?? []) : [];
 }
 
 /**
- * Phase 5 — Company-specific base fields that always appear in Tab 0,
- * regardless of which equipment category is selected.
+ * Phase 5 — Company-specific requirement fields (Tab 0 replacement).
+ * Each company gets its own set of fields that replace the generic Tab 0 fields.
+ * Category-specific spec fields (from SPEC_FIELDS) are appended on top.
  */
-export const COMPANY_BASE_FIELDS: Record<string, SpecField[]> = {
+export const COMPANY_FIELDS: Record<string, SpecField[]> = {
   "stg-rentals": [
-    { key: "operatorNeeded", label: "Operator required", placeholder: "Yes / No", hint: "Does the client need our operator, or do they have their own?" },
-    { key: "powerPreference", label: "Power preference", placeholder: "Diesel / Battery / Any" },
-    { key: "terrainType", label: "Site terrain", placeholder: "e.g. Flat concrete, uneven ground, rough terrain" },
+    { key: "height", label: "Working / Platform Height", placeholder: "e.g. 45 ft" },
+    { key: "capacity", label: "Capacity", placeholder: "e.g. 230 kg" },
+    { key: "liftType", label: "Lift Type", placeholder: "Boom / Scissor / Spider / Man Lift" },
+    { key: "duration", label: "Duration", placeholder: "e.g. 30 days" },
+    { key: "operatorNeeded", label: "Operator Needed", placeholder: "Yes / No" },
+    { key: "powerType", label: "Power Type", placeholder: "Diesel / Electric / Hybrid" },
+    { key: "location", label: "Site Location", placeholder: "Project site address" },
   ],
   "stg-infra": [
-    { key: "terrain", label: "Site terrain", placeholder: "e.g. Hard ground, soft soil, hilly" },
-    { key: "siteCondition", label: "Site condition", placeholder: "e.g. Wet, dusty, underground" },
-    { key: "operatorRequired", label: "Operator required", placeholder: "Yes / No" },
-    { key: "accessWidth", label: "Access / entry width", placeholder: "e.g. 3 m gate" },
+    { key: "terrain", label: "Terrain", placeholder: "Hard ground / Soft soil / Hilly" },
+    { key: "machineModel", label: "Machine Model", placeholder: "e.g. CAT 950H" },
+    { key: "projectDuration", label: "Project Duration", placeholder: "e.g. 6 months" },
+    { key: "siteCondition", label: "Site Condition", placeholder: "Wet / Dusty / Confined / Open" },
+    { key: "operatorRequired", label: "Operator Required", placeholder: "Yes / No" },
   ],
   "stg-trading": [
-    { key: "brand", label: "Brand preference", placeholder: "e.g. Bridgestone, Mahle, or any" },
-    { key: "machineModel", label: "Machine make & model", placeholder: "e.g. CAT 950H, JCB 3CX" },
-    { key: "partNumber", label: "Part number (if known)", placeholder: "OEM / aftermarket no." },
+    { key: "brand", label: "Brand", placeholder: "e.g. Bridgestone, Mahle" },
+    { key: "productType", label: "Product Type", placeholder: "Tyres / Filters / Spares" },
+    { key: "size", label: "Size", placeholder: "e.g. 17.5-25" },
+    { key: "quantity", label: "Quantity", placeholder: "e.g. 4" },
+    { key: "model", label: "Model / Part Number", placeholder: "e.g. CAT 950H, OEM no." },
   ],
 };
 
-export function companyBaseFieldsFor(companyId: string): SpecField[] {
-  return COMPANY_BASE_FIELDS[companyId] ?? [];
+export function companyFieldsFor(companyId: string): SpecField[] {
+  return COMPANY_FIELDS[companyId] ?? [];
 }

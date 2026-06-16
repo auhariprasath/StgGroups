@@ -1,6 +1,12 @@
 import { cn } from "@/lib/utils";
 import { LEAD_STATUS, PRIORITY } from "@/lib/status";
-import type { LeadStatus, Priority } from "@/lib/data/types";
+import type { LeadStatus, Priority, LeadType } from "@/lib/data/types";
+
+const LEAD_TYPE_CONFIG: Record<LeadType, { label: string; token: string }> = {
+  new_lead: { label: "New", token: "#6366f1" },
+  existing_contact: { label: "Existing", token: "#16a34a" },
+  active_negotiation: { label: "Negotiation", token: "#ea580c" },
+};
 
 /** Coloured pill for a lead's lifecycle state. */
 export function StatusBadge({ status, className }: { status: LeadStatus; className?: string }) {
@@ -16,6 +22,32 @@ export function StatusBadge({ status, className }: { status: LeadStatus; classNa
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.token }} />
       {s.label}
+    </span>
+  );
+}
+
+/** Badge for lead type (new / existing / negotiation). */
+export function LeadTypeBadge({
+  leadType,
+  className,
+}: {
+  leadType?: LeadType | null;
+  className?: string;
+}) {
+  if (!leadType) return null;
+  const cfg = LEAD_TYPE_CONFIG[leadType];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        className,
+      )}
+      style={{
+        backgroundColor: `color-mix(in srgb, ${cfg.token} 12%, transparent)`,
+        color: cfg.token,
+      }}
+    >
+      {cfg.label}
     </span>
   );
 }

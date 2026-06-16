@@ -7,8 +7,16 @@ import { PageHeader } from "@/components/page-header";
 import { formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
-  TrendingUp, TrendingDown, Users, IndianRupee, CheckCircle2,
-  XCircle, AlertTriangle, BarChart3, Building2, Target,
+  TrendingUp,
+  TrendingDown,
+  Users,
+  IndianRupee,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  Target,
 } from "lucide-react";
 import type { LeadStatus } from "@/lib/data/types";
 
@@ -16,11 +24,13 @@ export const Route = createFileRoute("/_app/reports")({ component: ReportsPage }
 
 const FUNNEL: { status: LeadStatus; label: string; color: string }[] = [
   { status: "new", label: "New", color: "#6366f1" },
+  { status: "first_contact", label: "First contact", color: "#818cf8" },
   { status: "followup", label: "Follow-up", color: "#8b5cf6" },
-  { status: "interested", label: "Interested", color: "#3b82f6" },
+  { status: "requirements", label: "Requirements", color: "#3b82f6" },
   { status: "negotiation", label: "Negotiation", color: "#f59e0b" },
   { status: "quote_sent", label: "Quote Sent", color: "#0ea5e9" },
-  { status: "confirmed", label: "Confirmed", color: "#10b981" },
+  { status: "work_order", label: "Work Order", color: "#14b8a6" },
+  { status: "active_project", label: "Active Project", color: "#10b981" },
   { status: "completed", label: "Completed", color: "#22c55e" },
 ];
 
@@ -78,7 +88,15 @@ function ReportsPage() {
             return lead?.companyId === c.id && p.stage === "fully_paid";
           })
           .reduce((s, p) => s + p.total, 0);
-        return { company: c, total: cLeads.length, won, lost, closed, revenue, winRate: closed > 0 ? Math.round((won / closed) * 100) : 0 };
+        return {
+          company: c,
+          total: cLeads.length,
+          won,
+          lost,
+          closed,
+          revenue,
+          winRate: closed > 0 ? Math.round((won / closed) * 100) : 0,
+        };
       }),
     [db, leads],
   );
@@ -129,15 +147,28 @@ function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Reports" description="Pipeline funnel, revenue breakdown, and exec performance." />
+      <PageHeader
+        title="Reports"
+        description="Pipeline funnel, revenue breakdown, and exec performance."
+      />
 
       {/* ─── KPI row ─────────────────────────────────────────────────────── */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Total leads" value={totalLeads} icon={<Users className="h-4 w-4 text-muted-foreground" />} />
+        <KpiCard
+          label="Total leads"
+          value={totalLeads}
+          icon={<Users className="h-4 w-4 text-muted-foreground" />}
+        />
         <KpiCard
           label="Win rate"
           value={`${winRate}%`}
-          icon={winRate >= 40 ? <TrendingUp className="h-4 w-4 text-success" /> : <TrendingDown className="h-4 w-4 text-destructive" />}
+          icon={
+            winRate >= 40 ? (
+              <TrendingUp className="h-4 w-4 text-success" />
+            ) : (
+              <TrendingDown className="h-4 w-4 text-destructive" />
+            )
+          }
           accent={winRate >= 40 ? "success" : winRate >= 20 ? "neutral" : "danger"}
           sub={`${wonLeads} won / ${lostLeads} lost`}
         />
@@ -164,7 +195,9 @@ function ReportsPage() {
             const pct = Math.round((count / maxFunnelCount) * 100);
             return (
               <div key={status} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 text-right text-sm text-muted-foreground">{label}</span>
+                <span className="w-28 shrink-0 text-right text-sm text-muted-foreground">
+                  {label}
+                </span>
                 <div className="relative h-7 flex-1 overflow-hidden rounded-md bg-muted">
                   <div
                     className="h-full rounded-md transition-all"
@@ -182,7 +215,9 @@ function ReportsPage() {
           {/* Loss */}
           {lostLeads > 0 && (
             <div className="mt-2 flex items-center gap-3 opacity-60">
-              <span className="w-28 shrink-0 text-right text-sm text-muted-foreground">Dropped</span>
+              <span className="w-28 shrink-0 text-right text-sm text-muted-foreground">
+                Dropped
+              </span>
               <div className="relative h-7 flex-1 overflow-hidden rounded-md bg-muted">
                 <div
                   className="h-full rounded-md bg-destructive/60"
@@ -206,7 +241,10 @@ function ReportsPage() {
           {perCompany.map(({ company: c, total, won, lost, winRate: wr, revenue }) => (
             <div key={c.id} className="rounded-xl border p-4">
               <div className="mb-3 flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: c.accent }} />
+                <span
+                  className="h-3 w-3 rounded-full shrink-0"
+                  style={{ backgroundColor: c.accent }}
+                />
                 <p className="font-semibold truncate">{c.name}</p>
               </div>
               <dl className="grid grid-cols-2 gap-y-2 text-sm">
@@ -222,7 +260,10 @@ function ReportsPage() {
                 <dd className="text-right font-semibold">{formatINR(revenue)}</dd>
               </dl>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full" style={{ width: `${wr}%`, backgroundColor: c.accent }} />
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${wr}%`, backgroundColor: c.accent }}
+                />
               </div>
             </div>
           ))}
@@ -257,7 +298,12 @@ function ReportsPage() {
                     <td className="px-4 py-3 text-right font-medium text-success">{won}</td>
                     <td className="px-4 py-3 text-right text-destructive">{lost}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={cn("font-semibold", wr >= 40 ? "text-success" : wr < 20 ? "text-destructive" : "")}>
+                      <span
+                        className={cn(
+                          "font-semibold",
+                          wr >= 40 ? "text-success" : wr < 20 ? "text-destructive" : "",
+                        )}
+                      >
                         {wr}%
                       </span>
                     </td>
@@ -269,7 +315,10 @@ function ReportsPage() {
                             {target.achieved}/{target.goal}
                           </span>
                           <div className="mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-muted ml-auto">
-                            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(tPct!, 100)}%` }} />
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${Math.min(tPct!, 100)}%` }}
+                            />
                           </div>
                         </div>
                       ) : (
@@ -282,7 +331,9 @@ function ReportsPage() {
             </tbody>
           </table>
           {perExec.length === 0 && (
-            <p className="p-6 text-center text-sm text-muted-foreground">No executives configured yet.</p>
+            <p className="p-6 text-center text-sm text-muted-foreground">
+              No executives configured yet.
+            </p>
           )}
         </div>
       </Section>
@@ -309,7 +360,10 @@ function ReportsPage() {
           />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Lifetime customer revenue: <span className="font-semibold text-foreground">{formatINR(customers.reduce((s, c) => s + c.totalRevenue, 0))}</span>
+          Lifetime customer revenue:{" "}
+          <span className="font-semibold text-foreground">
+            {formatINR(customers.reduce((s, c) => s + c.totalRevenue, 0))}
+          </span>
         </p>
       </Section>
 
@@ -345,9 +399,13 @@ function ReportsPage() {
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
 function Section({
-  title, icon: Icon, children,
+  title,
+  icon: Icon,
+  children,
 }: {
-  title: string; icon: typeof BarChart3; children: React.ReactNode;
+  title: string;
+  icon: typeof BarChart3;
+  children: React.ReactNode;
 }) {
   return (
     <section className="mb-5 rounded-2xl border bg-card p-5 shadow-card">
@@ -360,10 +418,17 @@ function Section({
 }
 
 function KpiCard({
-  label, value, icon, accent, sub,
+  label,
+  value,
+  icon,
+  accent,
+  sub,
 }: {
-  label: string; value: string | number; icon: React.ReactNode;
-  accent?: "success" | "danger" | "neutral"; sub?: string;
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  accent?: "success" | "danger" | "neutral";
+  sub?: string;
 }) {
   return (
     <div className="rounded-xl border bg-card p-4 shadow-card">
@@ -386,15 +451,27 @@ function KpiCard({
 }
 
 function StatBox({
-  label, value, icon, accent,
+  label,
+  value,
+  icon,
+  accent,
 }: {
-  label: string; value: number; icon: React.ReactNode; accent?: "primary" | "danger";
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  accent?: "primary" | "danger";
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border p-4">
       {icon}
       <div>
-        <p className={cn("text-2xl font-bold", accent === "danger" && "text-destructive", accent === "primary" && "text-primary")}>
+        <p
+          className={cn(
+            "text-2xl font-bold",
+            accent === "danger" && "text-destructive",
+            accent === "primary" && "text-primary",
+          )}
+        >
           {value}
         </p>
         <p className="text-xs text-muted-foreground">{label}</p>
